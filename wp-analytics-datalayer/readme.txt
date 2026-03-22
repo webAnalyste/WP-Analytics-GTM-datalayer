@@ -1,4 +1,4 @@
-===  WP Analytics DataLayer ===
+===  WP Analytics GTM DataLayer ===
 Contributors: webAnalyste
 Tags: analytics, datalayer, gtm, ga4, woocommerce
 Requires at least: 6.0
@@ -11,7 +11,7 @@ Lightweight WordPress plugin to push a clean, configurable analytics dataLayer f
 
 == Description ==
 
-WP Analytics DataLayer is a **governance plugin** for your analytics dataLayer.
+WP Analytics GTM DataLayer is a **governance plugin** for your analytics dataLayer.
 It does **not** replace GTM. It feeds it with the right data.
 
 **What it does:**
