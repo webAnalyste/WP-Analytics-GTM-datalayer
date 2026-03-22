@@ -24,7 +24,10 @@ class WADL_Updater {
 	public function __construct() {
 		$this->plugin_basename = plugin_basename( WADL_PLUGIN_FILE );
 
+		// Inject update when WP writes the transient (standard check cycle).
 		add_filter( 'pre_set_site_transient_update_plugins', [ $this, 'check_for_update' ] );
+		// Inject update when WP reads the transient (covers cached results).
+		add_filter( 'site_transient_update_plugins',         [ $this, 'check_for_update' ] );
 		add_filter( 'plugins_api',                           [ $this, 'plugin_info' ], 20, 3 );
 		add_filter( 'upgrader_source_selection',             [ $this, 'fix_source_dir' ], 10, 4 );
 
@@ -50,7 +53,12 @@ class WADL_Updater {
 		check_admin_referer( 'wadl_force_update_check', 'wadl_nonce' );
 
 		$this->clear_cache();
-		delete_site_transient( 'update_plugins' ); // Force WP to re-check all plugins
+		delete_site_transient( 'update_plugins' );
+
+		// Force WordPress to run the update check synchronously right now.
+		if ( function_exists( 'wp_update_plugins' ) ) {
+			wp_update_plugins();
+		}
 
 		wp_safe_redirect( add_query_arg( [ 'page' => 'wadl-dashboard', 'update_checked' => '1' ], admin_url( 'admin.php' ) ) );
 		exit;
