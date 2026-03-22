@@ -68,13 +68,41 @@ class WADL_Core {
 	}
 
 	/**
-	 * Appelé au register_activation_hook.
-	 * Écrit les defaults en base uniquement si le plugin n'a jamais été configuré.
+	 * Champs activés obligatoirement par défaut.
+	 */
+	private const DEFAULTS_ON = [
+		'content_page_template',
+		'content_page_type',
+		'content_categories',
+		'event_view_item',
+		'event_add_to_cart',
+		'event_begin_checkout',
+		'event_purchase',
+	];
+
+	/**
+	 * Appelé sur plugins_loaded à chaque montée de version.
+	 * Fonctionne pour les installations fraîches ET les mises à jour.
 	 */
 	public static function on_activate(): void {
-		if ( false === get_option( WADL_OPTION_KEY ) ) {
-			update_option( WADL_OPTION_KEY, self::get_defaults() );
+		if ( get_option( 'wadl_db_version' ) === WADL_VERSION ) {
+			return;
 		}
+
+		$saved = get_option( WADL_OPTION_KEY, false );
+
+		if ( $saved === false ) {
+			// Première installation — écrire tous les defaults.
+			update_option( WADL_OPTION_KEY, self::get_defaults() );
+		} else {
+			// Mise à jour — forcer les champs requis à 1.
+			foreach ( self::DEFAULTS_ON as $key ) {
+				$saved[ $key ] = 1;
+			}
+			update_option( WADL_OPTION_KEY, $saved );
+		}
+
+		update_option( 'wadl_db_version', WADL_VERSION );
 	}
 
 	/**
