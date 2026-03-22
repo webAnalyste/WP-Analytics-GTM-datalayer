@@ -68,45 +68,13 @@ class WADL_Core {
 	}
 
 	/**
-	 * Champs obligatoirement actifs — activés sur toute install existante.
-	 *
-	 * Couvre à la fois les nouveaux défauts ET la récupération après le bug
-	 * de reset v1.0/1.1 qui remettait silencieusement tout à 0.
+	 * Appelé au register_activation_hook.
+	 * Écrit les defaults en base uniquement si le plugin n'a jamais été configuré.
 	 */
-	private const REQUIRED_ON = [
-		'content_page_template',
-		'content_page_type',
-		'content_categories',
-		'event_view_item',
-		'event_add_to_cart',
-		'event_begin_checkout',
-		'event_purchase',
-	];
-
-	/**
-	 * Migration — s'exécute une seule fois par version, no-op sinon.
-	 */
-	public static function maybe_migrate(): void {
-		$db_version = get_option( 'wadl_db_version', '0' );
-
-		if ( version_compare( $db_version, WADL_VERSION, '>=' ) ) {
-			return;
+	public static function on_activate(): void {
+		if ( false === get_option( WADL_OPTION_KEY ) ) {
+			update_option( WADL_OPTION_KEY, self::get_defaults() );
 		}
-
-		$saved = get_option( WADL_OPTION_KEY, null );
-
-		if ( $saved !== null ) {
-			// Force-active tous les champs "requis par défaut".
-			// N'écrase les valeurs que si elles sont à 0 — respecte un 1 explicite.
-			foreach ( self::REQUIRED_ON as $key ) {
-				if ( ( $saved[ $key ] ?? 0 ) === 0 ) {
-					$saved[ $key ] = 1;
-				}
-			}
-			update_option( WADL_OPTION_KEY, $saved );
-		}
-
-		update_option( 'wadl_db_version', WADL_VERSION );
 	}
 
 	/**
