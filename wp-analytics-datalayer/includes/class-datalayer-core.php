@@ -68,10 +68,23 @@ class WADL_Core {
 	}
 
 	/**
-	 * Migration — runs on every load, no-ops if already at current version.
+	 * Champs obligatoirement actifs — activés sur toute install existante.
 	 *
-	 * v1.3.0: force-enable content_page_template and event_view_item on
-	 *         existing installs that still have the old default (0).
+	 * Couvre à la fois les nouveaux défauts ET la récupération après le bug
+	 * de reset v1.0/1.1 qui remettait silencieusement tout à 0.
+	 */
+	private const REQUIRED_ON = [
+		'content_page_template',
+		'content_page_type',
+		'content_categories',
+		'event_view_item',
+		'event_add_to_cart',
+		'event_begin_checkout',
+		'event_purchase',
+	];
+
+	/**
+	 * Migration — s'exécute une seule fois par version, no-op sinon.
 	 */
 	public static function maybe_migrate(): void {
 		$db_version = get_option( 'wadl_db_version', '0' );
@@ -83,14 +96,12 @@ class WADL_Core {
 		$saved = get_option( WADL_OPTION_KEY, null );
 
 		if ( $saved !== null ) {
-			// Only flip these two if they were at the old default (0) and never
-			// explicitly enabled — we use === 0 (strict) to avoid touching
-			// installs where the user deliberately set them.
-			if ( ( $saved['content_page_template'] ?? 0 ) === 0 ) {
-				$saved['content_page_template'] = 1;
-			}
-			if ( ( $saved['event_view_item'] ?? 0 ) === 0 ) {
-				$saved['event_view_item'] = 1;
+			// Force-active tous les champs "requis par défaut".
+			// N'écrase les valeurs que si elles sont à 0 — respecte un 1 explicite.
+			foreach ( self::REQUIRED_ON as $key ) {
+				if ( ( $saved[ $key ] ?? 0 ) === 0 ) {
+					$saved[ $key ] = 1;
+				}
 			}
 			update_option( WADL_OPTION_KEY, $saved );
 		}
