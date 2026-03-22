@@ -173,18 +173,19 @@ class WADL_Updater {
 		}
 
 		return (object) [
-			'name'         => 'WP Analytics GTM DataLayer',
-			'slug'         => $this->plugin_slug,
-			'version'      => $this->parse_version( (string) $release->tag_name ),
-			'author'       => '<a href="https://www.webanalyste.com">webAnalyste</a>',
-			'homepage'     => sprintf( 'https://github.com/%s/%s', self::GITHUB_USER, self::GITHUB_REPO ),
-			'requires'     => '6.0',
-			'requires_php' => '8.0',
-			'tested'       => '6.7',
-			'last_updated' => sanitize_text_field( (string) ( $release->published_at ?? '' ) ),
-			'sections'     => [
-				'description' => '<p>Lightweight plugin to configure a clean analytics dataLayer for GTM/GA4.</p>'
-					. '<p>By <a href="https://www.webanalyste.com">webAnalyste</a> — data, AI &amp; no-code automation.</p>',
+			'name'          => 'WP Analytics GTM DataLayer',
+			'slug'          => $this->plugin_slug,
+			'version'       => $this->parse_version( (string) $release->tag_name ),
+			'author'        => '<a href="https://www.webanalyste.com" target="_blank">webAnalyste</a>',
+			'author_profile'=> 'https://www.webanalyste.com',
+			'homepage'      => sprintf( 'https://github.com/%s/%s', self::GITHUB_USER, self::GITHUB_REPO ),
+			'requires'      => '6.0',
+			'requires_php'  => '8.0',
+			'tested'        => '6.7',
+			'last_updated'  => sanitize_text_field( (string) ( $release->published_at ?? '' ) ),
+			'sections'      => [
+				'description' => $this->get_description_html(),
+				'installation'=> $this->get_installation_html(),
 				'changelog'   => $this->format_changelog( (string) ( $release->body ?? '' ) ),
 			],
 			'download_link' => $this->get_download_url( $release ),
@@ -220,6 +221,58 @@ class WADL_Updater {
 	// ------------------------------------------------------------------
 	// Helpers
 	// ------------------------------------------------------------------
+
+	private function get_description_html(): string {
+		return '
+<p><strong>WP Analytics GTM DataLayer</strong> est un plugin de gouvernance du dataLayer analytics pour GTM / GA4.</p>
+<p>Il injecte un <code>dataLayer.push()</code> propre et configurable sur chaque page WordPress, sans remplacer GTM.</p>
+
+<h4>Ce que le plugin fait</h4>
+<ul>
+	<li>Injecte les métadonnées de page utiles à l\'analytics (<code>page_type</code>, <code>page_template</code>, <code>categories</code>…)</li>
+	<li>Expose des données utilisateur minimales et anonymisées</li>
+	<li>Pousse les événements GA4 e-commerce WooCommerce (<code>view_item</code>, <code>add_to_cart</code>, <code>purchase</code>…)</li>
+	<li>Interface admin simple : toggles par groupe, aperçu JSON en temps réel</li>
+	<li>Export / Import / Reset des réglages</li>
+	<li>Mise à jour automatique depuis GitHub</li>
+</ul>
+
+<h4>Ce que le plugin ne fait pas</h4>
+<ul>
+	<li>Il ne remplace pas GTM ni Google Analytics</li>
+	<li>Il n\'expose aucune donnée personnelle brute</li>
+	<li>Il ne collecte et ne transmet aucune donnée à des tiers</li>
+</ul>
+
+<hr>
+
+<h4>Développé par webAnalyste</h4>
+<p>
+	<a href="https://www.webanalyste.com" target="_blank"><strong>webAnalyste.com</strong></a> est une agence spécialisée en
+	<strong>data, IA et automatisation no-code</strong>. Nous concevons des stacks analytics sur-mesure pour améliorer
+	la performance digitale et le SEO de nos clients — de l\'architecture de tracking à l\'implémentation GA4 / GTM.
+</p>
+<p>
+	<a href="https://www.formations-analytics.com" target="_blank"><strong>formations-analytics.com</strong></a> —
+	Notre organisme de formation : GA4, GTM, Data Visualisation, IA appliquée au marketing digital.
+	Des formations pratiques et opérationnelles sur les mêmes sujets.
+</p>';
+	}
+
+	private function get_installation_html(): string {
+		return '
+<ol>
+	<li>Téléchargez le zip depuis <a href="https://github.com/' . self::GITHUB_USER . '/' . self::GITHUB_REPO . '/releases/latest" target="_blank">GitHub Releases</a>.</li>
+	<li>Dans WordPress : <strong>Extensions → Ajouter → Téléverser</strong>, sélectionnez le zip.</li>
+	<li>Activez le plugin.</li>
+	<li>Allez dans <strong>DataLayer</strong> dans le menu admin.</li>
+	<li>Configurez les champs et événements à exposer.</li>
+</ol>
+<p>Les champs suivants sont <strong>actifs par défaut</strong> dès l\'activation :<br>
+<code>page_template</code>, <code>page_type</code>, <code>page_title</code>, <code>page_url</code>,
+<code>categories</code>, <code>user_logged_in</code>, <code>view_item</code>,
+<code>add_to_cart</code>, <code>begin_checkout</code>, <code>purchase</code>.</p>';
+	}
 
 	private function format_changelog( string $markdown ): string {
 		if ( ! $markdown ) {
