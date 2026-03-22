@@ -128,8 +128,8 @@ class WADL_Updater {
 	// WordPress update hooks
 	// ------------------------------------------------------------------
 
-	public function check_for_update( object $transient ): object {
-		if ( empty( $transient->checked ) ) {
+	public function check_for_update( $transient ) {
+		if ( ! is_object( $transient ) || empty( $transient->checked ) ) {
 			return $transient;
 		}
 
