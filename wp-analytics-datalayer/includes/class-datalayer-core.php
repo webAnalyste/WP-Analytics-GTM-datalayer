@@ -4,12 +4,14 @@ defined( 'ABSPATH' ) || exit;
 class WADL_Core {
 
 	/**
-	 * Default settings — privacy-first (most fields off by default).
+	 * Default settings.
+	 * Enabled by default: page_type, page_template, page_title, page_url,
+	 * categories, user_logged_in, view_item, add_to_cart, begin_checkout, purchase.
 	 */
 	public static function get_defaults(): array {
 		return [
 			// Content — Page context
-			'content_page_template'        => 0,
+			'content_page_template'        => 1, // enabled by default
 			'content_page_type'            => 1,
 			'content_page_title'           => 1,
 			'content_page_url'             => 1,
@@ -35,7 +37,7 @@ class WADL_Core {
 			// GA4 Events — Catalogue
 			'event_view_item_list'         => 0,
 			'event_select_item'            => 0,
-			'event_view_item'              => 0,
+			'event_view_item'              => 1, // enabled by default
 			// GA4 Events — Cart
 			'event_add_to_cart'            => 1,
 			'event_remove_from_cart'       => 0,
@@ -66,6 +68,37 @@ class WADL_Core {
 	}
 
 	/**
+	 * Migration — runs on every load, no-ops if already at current version.
+	 *
+	 * v1.3.0: force-enable content_page_template and event_view_item on
+	 *         existing installs that still have the old default (0).
+	 */
+	public static function maybe_migrate(): void {
+		$db_version = get_option( 'wadl_db_version', '0' );
+
+		if ( version_compare( $db_version, WADL_VERSION, '>=' ) ) {
+			return;
+		}
+
+		$saved = get_option( WADL_OPTION_KEY, null );
+
+		if ( $saved !== null ) {
+			// Only flip these two if they were at the old default (0) and never
+			// explicitly enabled — we use === 0 (strict) to avoid touching
+			// installs where the user deliberately set them.
+			if ( ( $saved['content_page_template'] ?? 0 ) === 0 ) {
+				$saved['content_page_template'] = 1;
+			}
+			if ( ( $saved['event_view_item'] ?? 0 ) === 0 ) {
+				$saved['event_view_item'] = 1;
+			}
+			update_option( WADL_OPTION_KEY, $saved );
+		}
+
+		update_option( 'wadl_db_version', WADL_VERSION );
+	}
+
+	/**
 	 * Build and output the dataLayer initialization script.
 	 */
 	public static function inject_datalayer(): void {
@@ -85,12 +118,11 @@ class WADL_Core {
 		// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
 		echo '<script>window.dataLayer = window.dataLayer || [];window.dataLayer.push(' . wp_json_encode( $payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ) . ');</script>' . "\n";
 
-		// Push any pending deferred events (login, sign_up) stored for this user.
 		self::flush_pending_user_events();
 	}
 
 	/**
-	 * Enqueue front-end JS for client-side events (select_item, checkout steps, promotions).
+	 * Enqueue front-end JS for client-side events.
 	 */
 	public static function enqueue_frontend_scripts(): void {
 		$settings = self::get_settings();
@@ -114,18 +146,17 @@ class WADL_Core {
 		wp_localize_script( 'wadl-frontend', 'wadlConfig', [
 			'currency' => function_exists( 'get_woocommerce_currency' ) ? sanitize_text_field( get_woocommerce_currency() ) : 'EUR',
 			'events'   => [
-				'select_item'        => (bool) $settings['event_select_item'],
-				'add_shipping_info'  => (bool) $settings['event_add_shipping_info'],
-				'add_payment_info'   => (bool) $settings['event_add_payment_info'],
-				'view_promotion'     => (bool) $settings['event_view_promotion'],
-				'select_promotion'   => (bool) $settings['event_select_promotion'],
+				'select_item'       => (bool) $settings['event_select_item'],
+				'add_shipping_info' => (bool) $settings['event_add_shipping_info'],
+				'add_payment_info'  => (bool) $settings['event_add_payment_info'],
+				'view_promotion'    => (bool) $settings['event_view_promotion'],
+				'select_promotion'  => (bool) $settings['event_select_promotion'],
 			],
 		] );
 	}
 
 	/**
 	 * Push pending user-level events (login / sign_up) stored as user meta.
-	 * Fires once then clears the flag.
 	 */
 	private static function flush_pending_user_events(): void {
 		if ( ! is_user_logged_in() ) return;
@@ -141,8 +172,7 @@ class WADL_Core {
 		}
 
 		$settings = self::get_settings();
-		$key      = 'event_' . $event;
-		if ( ! empty( $settings[ $key ] ) ) {
+		if ( ! empty( $settings[ 'event_' . $event ] ) ) {
 			// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
 			echo '<script>window.dataLayer = window.dataLayer || [];window.dataLayer.push(' . wp_json_encode( [ 'event' => $event ], JSON_UNESCAPED_UNICODE ) . ');</script>' . "\n";
 		}

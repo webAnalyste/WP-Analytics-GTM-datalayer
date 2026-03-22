@@ -4,7 +4,7 @@ Tags: analytics, datalayer, gtm, ga4, woocommerce
 Requires at least: 6.0
 Tested up to: 6.7
 Requires PHP: 8.0
-Stable tag: 1.2.0
+Stable tag: 1.3.0
 License: GPLv2 or later
 
 Lightweight WordPress plugin to push a clean, configurable analytics dataLayer for GTM / GA4.
@@ -41,6 +41,15 @@ We build tailor-made analytics stacks to improve the digital performance and SEO
 4. Configure the fields and events you want to push
 
 == Changelog ==
+
+= 1.3.0 =
+* Fix: langue — load_plugin_textdomain() désormais appelé correctement
+* Fix: auto-update — cache d'erreur réduit à 30 min (était 12h, bloquait les re-checks)
+* Fix: auto-update — cache vidé quand WordPress force une vérification
+* Nouveau: bouton "Vérifier maintenant" dans le dashboard pour forcer la détection de mise à jour
+* Nouveau: dossier languages/ + fichier .pot pour traductions futures
+* Défauts activés: page_template et view_item maintenant ON par défaut
+* Migration automatique: active page_template et view_item sur les installs existantes
 
 = 1.2.0 =
 * Fix: réglages réinitialisés lors de la sauvegarde d'une autre page (bug critique)

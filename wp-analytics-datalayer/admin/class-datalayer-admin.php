@@ -146,9 +146,10 @@ class WADL_Admin {
 
 	private function render_header( string $title, string $subtitle = '' ): void {
 		// phpcs:disable WordPress.Security.NonceVerification.Recommended
-		$updated      = isset( $_GET['updated'] )      && '1' === $_GET['updated'];
-		$reset        = isset( $_GET['reset'] )        && '1' === $_GET['reset'];
-		$import_error = isset( $_GET['import_error'] ) ? (int) $_GET['import_error'] : 0;
+		$updated        = isset( $_GET['updated'] )        && '1' === $_GET['updated'];
+		$reset          = isset( $_GET['reset'] )          && '1' === $_GET['reset'];
+		$update_checked = isset( $_GET['update_checked'] ) && '1' === $_GET['update_checked'];
+		$import_error   = isset( $_GET['import_error'] )   ? (int) $_GET['import_error'] : 0;
 		// phpcs:enable
 		?>
 		<div class="wadl-wrap">
@@ -173,6 +174,11 @@ class WADL_Admin {
 		<div class="wadl-notice wadl-notice--success">
 			<span class="dashicons dashicons-yes-alt"></span>
 			<?php esc_html_e( 'Réglages réinitialisés aux valeurs par défaut.', 'wp-analytics-datalayer' ); ?>
+		</div>
+		<?php elseif ( $update_checked ) : ?>
+		<div class="wadl-notice wadl-notice--success">
+			<span class="dashicons dashicons-update"></span>
+			<?php esc_html_e( 'Vérification forcée — WordPress va re-contrôler les mises à jour.', 'wp-analytics-datalayer' ); ?>
 		</div>
 		<?php elseif ( $import_error ) : ?>
 		<div class="wadl-notice wadl-notice--warning">
@@ -371,6 +377,22 @@ class WADL_Admin {
 							</label>
 							<button type="submit" class="wadl-btn wadl-btn--secondary" id="wadl-import-btn" disabled>
 								<?php esc_html_e( 'Importer', 'wp-analytics-datalayer' ); ?>
+							</button>
+						</form>
+					</div>
+
+					<!-- Force update check -->
+					<div class="wadl-tool">
+						<div class="wadl-tool__info">
+							<strong><?php esc_html_e( 'Vérifier les mises à jour', 'wp-analytics-datalayer' ); ?></strong>
+							<p><?php esc_html_e( 'Force WordPress à re-contrôler immédiatement si une nouvelle version est disponible.', 'wp-analytics-datalayer' ); ?></p>
+						</div>
+						<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+							<input type="hidden" name="action" value="wadl_force_update_check">
+							<?php wp_nonce_field( 'wadl_force_update_check', 'wadl_nonce' ); ?>
+							<button type="submit" class="wadl-btn wadl-btn--secondary">
+								<span class="dashicons dashicons-update"></span>
+								<?php esc_html_e( 'Vérifier maintenant', 'wp-analytics-datalayer' ); ?>
 							</button>
 						</form>
 					</div>
