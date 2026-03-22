@@ -1,0 +1,376 @@
+Oui. Il faut rester sec, simple, utile.
+
+Tu ne veux pas un plugin “dataLayer encyclopédique”.
+Tu veux un **petit plugin de gouvernance du dataLayer analytics**.
+
+Et tu as raison sur les exemples : il faut distinguer proprement ce qui relève de la **nature de la page**, de son **template**, et de son **contexte business**. WordPress s’appuie justement sur la hiérarchie de templates et les conditional tags pour déterminer ce contexte. ([WordPress Developer Resources][1])
+
+Voici la version recadrée.
+
+---
+
+# CDC — Petit plugin WordPress Data Layer Analytics
+
+## Objet
+
+Développer un **plugin WordPress léger, sécurisé et personnalisable** permettant d’alimenter le `dataLayer` du site avec :
+
+* un **petit noyau de métadonnées content utiles à l’analytics** ;
+* un **petit noyau de métadonnées user utiles à l’analytics** ;
+* la **sélection des événements GA4 WooCommerce à exposer** ;
+* une interface admin simple pour activer ou désactiver ce qui doit partir dans le `dataLayer`.
+
+Le plugin ne doit pas remonter “toutes les métadonnées disponibles”.
+Il doit remonter **les bonnes**, point.
+
+---
+
+# 1. Périmètre réel du plugin
+
+## Le plugin doit faire
+
+* injecter un `dataLayer` propre ;
+* exposer seulement des métadonnées analytics utiles ;
+* laisser l’admin choisir les champs à exposer ;
+* laisser l’admin choisir les événements GA4 à pousser ;
+* fournir un aperçu/debug lisible ;
+* garantir un haut niveau de sécurité.
+
+## Le plugin ne doit pas faire
+
+* exposer tous les attributs `post`, `term`, `user`, `product` ;
+* devenir un outil de tracking complet ;
+* remplacer GTM ;
+* exposer des données personnelles brutes ;
+* multiplier les options techniques inutiles.
+
+---
+
+# 2. Métadonnées content utiles
+
+Tu as donné les bons exemples.
+Les champs utiles sont ceux qui aident à qualifier le contexte de lecture ou d’achat.
+
+## 2.1 Bloc “Page context”
+
+Champs activables :
+
+* `page_template`
+* `page_type`
+* `page_title`
+* `page_url`
+* `post_type`
+* `post_id`
+* `post_slug`
+
+## 2.2 Définition attendue
+
+### `page_template`
+
+Ce champ décrit le **template WordPress réellement utilisé ou le contexte template principal**, par exemple :
+
+* `front-page`
+* `home`
+* `single`
+* `page`
+* `archive`
+* `taxonomy`
+* `search`
+* `404`
+* `product`
+* `cart`
+* `checkout`
+* `account`
+
+WordPress distingue précisément les templates via sa template hierarchy et ses conditional tags. ([WordPress Developer Resources][1])
+
+### `page_type`
+
+Ce champ décrit la **nature analytics / métier de la page**, par exemple :
+
+* `frontpage`
+* `article`
+* `page`
+* `listing`
+* `category_listing`
+* `search_results`
+* `product`
+* `cart`
+* `checkout`
+* `order_confirmation`
+* `account`
+* `404`
+
+Autrement dit :
+
+* `page_template` = logique d’affichage WordPress
+* `page_type` = logique business / analytics
+
+C’est une distinction utile. Sinon tu mélanges structure WP et lecture analytics.
+
+## 2.3 Bloc “Content classification”
+
+Champs activables :
+
+* `categories`
+* `tags`
+* `main_taxonomy`
+* `author_name` ou mieux `author_id_hashed`
+* `publish_date`
+* `modified_date`
+
+## 2.4 Bloc “Navigation context”
+
+Champs activables :
+
+* `is_logged_in`
+* `pagination_number`
+* `search_term`
+* `search_results_count`
+
+---
+
+# 3. Métadonnées content à exclure
+
+Pas besoin de partir en vrille.
+
+À exclure du périmètre :
+
+* contenu complet de l’article ;
+* excerpt long ;
+* toutes les custom fields ;
+* toutes les taxonomies sans filtre ;
+* toutes les métadonnées SEO ;
+* tous les attributs du produit ;
+* tous les flags WordPress internes.
+
+Ce bruit n’apporte presque rien au suivi analytics, mais augmente la dette, la surface de bug et le risque d’exposition inutile.
+
+---
+
+# 4. Métadonnées user utiles
+
+Là aussi : minimal.
+
+## Champs activables
+
+* `user_logged_in`
+* `user_role`
+* `user_id_hashed`
+* `customer_status` WooCommerce si faisable proprement
+
+## Champs interdits par défaut
+
+* email
+* prénom
+* nom
+* téléphone
+* adresse
+* ville
+* code postal
+* identifiant brut
+
+WordPress recommande clairement de ne jamais faire confiance aux données manipulées sans validation, sanitation et escaping, et ce principe doit s’appliquer ici aussi à la minimisation des données exposées. ([WordPress Developer Resources][2])
+
+---
+
+# 5. Événements GA4 à choisir dans l’admin
+
+C’est un point central.
+
+L’admin doit pouvoir **cocher les événements GA4 à exposer dans le `dataLayer`**.
+Pas juste un switch global “WooCommerce tracking”.
+
+Google documente les événements e-commerce GA4 autour d’un `items` array et d’événements standard comme `view_item`, `add_to_cart`, `begin_checkout`, `purchase`, etc. ([Google for Developers][3])
+
+## Liste des événements à proposer
+
+### Catalogue
+
+* `view_item_list`
+* `select_item`
+* `view_item`
+
+### Panier
+
+* `add_to_cart`
+* `remove_from_cart`
+* `view_cart`
+
+### Tunnel
+
+* `begin_checkout`
+* `add_shipping_info`
+* `add_payment_info`
+
+### Achat
+
+* `purchase`
+
+### Optionnels
+
+* `search`
+* `login`
+* `sign_up`
+* `add_to_wishlist`
+* `view_promotion`
+* `select_promotion`
+
+---
+
+# 6. Paramètres e-commerce utiles
+
+## Paramètres item
+
+* `item_id`
+* `item_name`
+* `item_category`
+* `item_brand`
+* `item_variant`
+* `price`
+* `quantity`
+* `currency`
+* `coupon`
+* `discount`
+* `item_list_name`
+* `index`
+
+## Paramètres transaction
+
+* `transaction_id`
+* `value`
+* `tax`
+* `shipping`
+* `currency`
+* `coupon`
+* `payment_type`
+* `shipping_tier`
+
+Pas plus, sauf besoin analytics réel.
+
+---
+
+# 7. UX admin attendue
+
+Tu veux tester l’UX avant le dev. Donc il faut une admin très simple.
+
+## Écrans
+
+* **Dashboard**
+* **Réglages content**
+* **Réglages user**
+* **Événements GA4**
+* **Debug / aperçu JSON**
+
+## Logique UX
+
+* switches simples ;
+* groupes clairs ;
+* labels compréhensibles ;
+* description courte sous chaque champ ;
+* aperçu immédiat des données qui seront poussées ;
+* warning visible sur les données user ;
+* pas de jargon WordPress inutile.
+
+## Point critique
+
+L’écran le plus important n’est pas “General settings”.
+C’est **“Événements GA4”**.
+C’est là que l’utilisateur doit comprendre immédiatement :
+
+* ce qu’il active ;
+* à quoi ça sert ;
+* ce qui sera envoyé.
+
+---
+
+# 8. Sécurité — exigences non négociables
+
+Là, il ne faut rien lâcher.
+
+WordPress impose les briques de base : contrôle des capacités, nonces, validation, sanitation, escaping. ([WordPress Developer Resources][2])
+
+## Obligatoire
+
+* capability check pour toute action admin ;
+* nonce sur sauvegarde, import, reset ;
+* sanitation de tous les réglages ;
+* escaping de tous les rendus admin ;
+* `wp_json_encode()` pour produire le payload JS ;
+* aucun champ libre injecté dans le front sans contrôle ;
+* aucune donnée user sensible par défaut ;
+* import/export JSON validé ;
+* aucun endpoint AJAX/REST sans protections strictes.
+
+## Règle de base
+
+Le plugin doit être sécurisé **même si l’admin configure mal les options**.
+
+---
+
+# 9. Ce que Claude Code doit concevoir
+
+Tu ne veux pas un plan produit avec “V1”. Très bien.
+Donc il faut lui donner un objectif simple et fermé.
+
+## Mandat à donner
+
+Concevoir un petit plugin WordPress admin permettant :
+
+* de configurer les métadonnées content utiles :
+
+  * `page_template`
+  * `page_type`
+  * `page_title`
+  * `page_url`
+  * `post_type`
+  * `post_id`
+  * `post_slug`
+  * `categories`
+  * `tags`
+  * `author`
+  * `publish_date`
+  * `modified_date`
+  * `search_term`
+  * `search_results_count`
+  * `pagination_number`
+
+* de configurer les métadonnées user utiles :
+
+  * `user_logged_in`
+  * `user_role`
+  * `user_id_hashed`
+  * `customer_status`
+
+* de sélectionner les événements GA4 WooCommerce à pousser dans le `dataLayer`
+
+* de fournir un écran debug affichant un exemple du payload JSON
+
+* de respecter strictement les règles WordPress de sécurité :
+
+  * capabilities
+  * nonces
+  * validation
+  * sanitation
+  * escaping
+
+---
+
+# 10. Formulation finale du besoin
+
+Le plugin attendu est un **petit plugin de configuration du dataLayer analytics**, pas un collecteur exhaustif de données WordPress.
+
+Il doit exposer en priorité :
+
+* le **contexte de page** (`page_template`, `page_type`) ;
+* quelques **métadonnées éditoriales utiles** ;
+* quelques **métadonnées user minimales** ;
+* une **sélection explicite des événements GA4 WooCommerce**.
+
+Le reste est du gras.
+
+Je peux maintenant te transformer ça en **prompt ultra-cadré pour Claude Code**, directement exploitable, sans blabla.
+
+[1]: https://developer.wordpress.org/themes/classic-themes/basics/template-hierarchy/ "https://developer.wordpress.org/themes/classic-themes/basics/template-hierarchy/"
+[2]: https://developer.wordpress.org/plugins/security/ "https://developer.wordpress.org/plugins/security/"
+[3]: https://developers.google.com/analytics/devguides/collection/ga4/ecommerce "https://developers.google.com/analytics/devguides/collection/ga4/ecommerce"
