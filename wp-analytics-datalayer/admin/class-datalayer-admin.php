@@ -35,24 +35,40 @@ class WADL_Admin {
 		wp_enqueue_script( 'wadl-admin', WADL_PLUGIN_URL . 'admin/assets/admin.js', [], WADL_VERSION, true );
 	}
 
+	/**
+	 * Map each admin page to the key prefix it owns.
+	 * A save from page X must ONLY update keys with the matching prefix.
+	 * All other keys are left untouched in the DB — this prevents cross-page reset.
+	 */
+	private const PAGE_PREFIXES = [
+		'wadl-content' => 'content_',
+		'wadl-user'    => 'user_',
+		'wadl-events'  => 'event_',
+	];
+
 	public function save_settings(): void {
 		if ( ! current_user_can( 'manage_options' ) ) {
 			wp_die( esc_html__( 'Permission refusée.', 'wp-analytics-datalayer' ) );
 		}
 		check_admin_referer( 'wadl_save_settings', 'wadl_nonce' );
 
-		$current  = WADL_Core::get_settings();
+		$redirect_page = sanitize_key( $_POST['_redirect_page'] ?? 'wadl-dashboard' );
+		$prefix        = self::PAGE_PREFIXES[ $redirect_page ] ?? null;
+
+		// Start from the currently saved settings so unrelated pages are preserved.
+		$saved    = get_option( WADL_OPTION_KEY, [] );
 		$defaults = WADL_Core::get_defaults();
-		$new      = [];
 
 		foreach ( $defaults as $key => $default ) {
-			// Checkboxes: present = 1, absent = 0
-			$new[ $key ] = isset( $_POST[ 'wadl_' . $key ] ) ? 1 : 0;
+			// Only update keys that belong to the current form.
+			if ( $prefix !== null && ! str_starts_with( $key, $prefix ) ) {
+				continue;
+			}
+			$saved[ $key ] = isset( $_POST[ 'wadl_' . $key ] ) ? 1 : 0;
 		}
 
-		update_option( WADL_OPTION_KEY, $new );
+		update_option( WADL_OPTION_KEY, $saved );
 
-		$redirect_page = sanitize_key( $_POST['_redirect_page'] ?? 'wadl-dashboard' );
 		wp_safe_redirect( add_query_arg( [ 'page' => $redirect_page, 'updated' => '1' ], admin_url( 'admin.php' ) ) );
 		exit;
 	}
