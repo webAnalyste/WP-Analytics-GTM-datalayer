@@ -25,6 +25,14 @@ It does **not** replace GTM. It feeds it with the right data.
 * Replace GTM or Google Analytics
 * Store or transmit personal data
 
+== About ==
+
+This plugin is developed and maintained by **[webAnalyste](https://www.webanalyste.com)**, a French agency specialised in data, AI and no-code automation.
+
+We build tailor-made analytics stacks to improve the digital performance and SEO of our clients — from tracking architecture to GA4 implementation, GTM governance and data-driven growth strategies.
+
+**Need training?** Check out **[formations-analytics.com](https://www.formations-analytics.com)**, our training centre offering hands-on courses on analytics, GA4, GTM, data visualisation and AI-powered marketing.
+
 == Installation ==
 
 1. Upload the `wp-analytics-datalayer` folder to `/wp-content/plugins/`
