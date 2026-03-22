@@ -24,10 +24,13 @@ require_once WADL_PLUGIN_DIR . 'includes/class-datalayer-core.php';
 require_once WADL_PLUGIN_DIR . 'includes/class-datalayer-content.php';
 require_once WADL_PLUGIN_DIR . 'includes/class-datalayer-user.php';
 require_once WADL_PLUGIN_DIR . 'includes/class-datalayer-events.php';
+require_once WADL_PLUGIN_DIR . 'includes/class-datalayer-updater.php';
 
 if ( is_admin() ) {
 	require_once WADL_PLUGIN_DIR . 'admin/class-datalayer-admin.php';
 	new WADL_Admin();
 }
+
+new WADL_Updater();
 
 add_action( 'wp_head', [ 'WADL_Core', 'inject_datalayer' ], 1 );
