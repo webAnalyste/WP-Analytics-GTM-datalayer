@@ -3,6 +3,26 @@
   'use strict';
 
   document.addEventListener('DOMContentLoaded', function () {
+
+    // File import input — enable button + show filename
+    var fileInputs = document.querySelectorAll('.wadl-file-input');
+    fileInputs.forEach(function (input) {
+      input.addEventListener('change', function () {
+        var label   = input.closest('.wadl-file-label');
+        var btn     = document.getElementById('wadl-import-btn');
+        var textEl  = label ? label.querySelector('.wadl-file-label__text') : null;
+        if ( input.files && input.files.length > 0 ) {
+          if ( textEl ) textEl.textContent = input.files[0].name;
+          if ( label )  label.classList.add('wadl-file-label--selected');
+          if ( btn )    btn.removeAttribute('disabled');
+        } else {
+          if ( textEl ) textEl.textContent = 'Choisir un fichier JSON\u2026';
+          if ( label )  label.classList.remove('wadl-file-label--selected');
+          if ( btn )    btn.setAttribute('disabled', 'disabled');
+        }
+      });
+    });
+
     // Copy JSON button
     var copyBtns = document.querySelectorAll('.wadl-copy-btn');
     copyBtns.forEach(function (btn) {

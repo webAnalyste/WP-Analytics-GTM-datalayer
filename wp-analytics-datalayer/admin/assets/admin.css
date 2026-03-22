@@ -380,6 +380,54 @@
 .wadl-copy-btn:hover { background: #4B5563; color: #fff; }
 .wadl-copy-btn--copied { background: var(--wadl-success) !important; color: #fff !important; }
 
+/* ============================================================
+   Buttons — secondary + danger
+   ============================================================ */
+.wadl-btn--secondary { background: var(--wadl-bg); color: var(--wadl-text); border: 1px solid var(--wadl-border); }
+.wadl-btn--secondary:hover { background: var(--wadl-border); color: var(--wadl-text); }
+.wadl-btn--danger { background: #FEE2E2; color: #991B1B; border: 1px solid #FCA5A5; }
+.wadl-btn--danger:hover { background: var(--wadl-danger); color: #fff; }
+
+/* ============================================================
+   Tools panel (export / import / reset)
+   ============================================================ */
+.wadl-panel--tools { margin-top: 0; }
+.wadl-tools { display: flex; flex-direction: column; gap: 0; }
+.wadl-tool {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--wadl-border);
+  flex-wrap: wrap;
+}
+.wadl-tool:last-child { border-bottom: none; padding-bottom: 0; }
+.wadl-tool__info { flex: 1; min-width: 0; }
+.wadl-tool__info strong { display: block; font-size: 13px; font-weight: 600; margin-bottom: 2px; }
+.wadl-tool__info p { font-size: 12px; color: var(--wadl-text-muted); }
+.wadl-tool--danger .wadl-tool__info strong { color: #991B1B; }
+
+/* File input */
+.wadl-import-form { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.wadl-file-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  background: var(--wadl-bg);
+  border: 1px dashed var(--wadl-border);
+  border-radius: var(--wadl-radius-sm);
+  font-size: 12px;
+  color: var(--wadl-text-muted);
+  cursor: pointer;
+  transition: border-color var(--wadl-transition), color var(--wadl-transition);
+}
+.wadl-file-label:hover { border-color: var(--wadl-primary); color: var(--wadl-primary); }
+.wadl-file-label .dashicons { font-size: 15px !important; width: 15px !important; height: 15px !important; }
+.wadl-file-input { position: absolute; opacity: 0; width: 1px; height: 1px; overflow: hidden; }
+.wadl-file-label--selected { border-color: var(--wadl-success); color: var(--wadl-success); border-style: solid; }
+
 /* Form footer */
 .wadl-form-footer {
   position: sticky;

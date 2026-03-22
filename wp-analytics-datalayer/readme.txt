@@ -4,7 +4,7 @@ Tags: analytics, datalayer, gtm, ga4, woocommerce
 Requires at least: 6.0
 Tested up to: 6.7
 Requires PHP: 8.0
-Stable tag: 1.0.0
+Stable tag: 1.1.0
 License: GPLv2 or later
 
 Lightweight WordPress plugin to push a clean, configurable analytics dataLayer for GTM / GA4.
@@ -33,6 +33,14 @@ It does **not** replace GTM. It feeds it with the right data.
 4. Configure the fields and events you want to push
 
 == Changelog ==
+
+= 1.1.0 =
+* Complete all GA4 events: remove_from_cart, search, login, sign_up, add_to_wishlist (YITH)
+* Client-side events via frontend.js: select_item, add_shipping_info, add_payment_info, view_promotion, select_promotion
+* Purchase deduplication (prevents double-push on page reload)
+* Product brand + variant support in item mapping
+* Admin: Export / Import / Reset settings
+* Improved admin notices (reset, import errors)
 
 = 1.0.0 =
 * Initial release

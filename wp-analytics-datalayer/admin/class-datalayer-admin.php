@@ -6,7 +6,10 @@ class WADL_Admin {
 	public function __construct() {
 		add_action( 'admin_menu', [ $this, 'add_menu' ] );
 		add_action( 'admin_enqueue_scripts', [ $this, 'enqueue_assets' ] );
-		add_action( 'admin_post_wadl_save_settings', [ $this, 'save_settings' ] );
+		add_action( 'admin_post_wadl_save_settings',   [ $this, 'save_settings' ] );
+		add_action( 'admin_post_wadl_export_settings', [ $this, 'export_settings' ] );
+		add_action( 'admin_post_wadl_import_settings', [ $this, 'import_settings' ] );
+		add_action( 'admin_post_wadl_reset_settings',  [ $this, 'reset_settings' ] );
 	}
 
 	public function add_menu(): void {
@@ -54,10 +57,83 @@ class WADL_Admin {
 		exit;
 	}
 
+	// ---------- Export / Import / Reset ----------
+
+	public function export_settings(): void {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_die( esc_html__( 'Permission refusée.', 'wp-analytics-datalayer' ) );
+		}
+		check_admin_referer( 'wadl_export_settings', 'wadl_nonce' );
+
+		$settings = WADL_Core::get_settings();
+		$filename = 'wadl-settings-' . gmdate( 'Y-m-d' ) . '.json';
+
+		header( 'Content-Type: application/json; charset=utf-8' );
+		header( 'Content-Disposition: attachment; filename="' . $filename . '"' );
+		header( 'Cache-Control: no-cache, no-store, must-revalidate' );
+
+		// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+		echo wp_json_encode( $settings, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE );
+		exit;
+	}
+
+	public function import_settings(): void {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_die( esc_html__( 'Permission refusée.', 'wp-analytics-datalayer' ) );
+		}
+		check_admin_referer( 'wadl_import_settings', 'wadl_nonce' );
+
+		if ( empty( $_FILES['wadl_import_file']['tmp_name'] ) ) {
+			wp_safe_redirect( add_query_arg( [ 'page' => 'wadl-dashboard', 'import_error' => '1' ], admin_url( 'admin.php' ) ) );
+			exit;
+		}
+
+		// phpcs:ignore WordPress.Security.ValidatedSanitizedInput
+		$tmp  = sanitize_text_field( $_FILES['wadl_import_file']['tmp_name'] );
+		$json = file_get_contents( $tmp ); // phpcs:ignore WordPress.WP.AlternativeFunctions
+
+		if ( ! $json ) {
+			wp_safe_redirect( add_query_arg( [ 'page' => 'wadl-dashboard', 'import_error' => '2' ], admin_url( 'admin.php' ) ) );
+			exit;
+		}
+
+		$imported = json_decode( $json, true );
+		if ( ! is_array( $imported ) ) {
+			wp_safe_redirect( add_query_arg( [ 'page' => 'wadl-dashboard', 'import_error' => '3' ], admin_url( 'admin.php' ) ) );
+			exit;
+		}
+
+		// Only keep known keys; cast all values to int (0 or 1).
+		$defaults = WADL_Core::get_defaults();
+		$clean    = [];
+		foreach ( $defaults as $key => $default ) {
+			$clean[ $key ] = isset( $imported[ $key ] ) ? (int) (bool) $imported[ $key ] : $default;
+		}
+
+		update_option( WADL_OPTION_KEY, $clean );
+		wp_safe_redirect( add_query_arg( [ 'page' => 'wadl-dashboard', 'updated' => '1' ], admin_url( 'admin.php' ) ) );
+		exit;
+	}
+
+	public function reset_settings(): void {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_die( esc_html__( 'Permission refusée.', 'wp-analytics-datalayer' ) );
+		}
+		check_admin_referer( 'wadl_reset_settings', 'wadl_nonce' );
+
+		delete_option( WADL_OPTION_KEY );
+		wp_safe_redirect( add_query_arg( [ 'page' => 'wadl-dashboard', 'reset' => '1' ], admin_url( 'admin.php' ) ) );
+		exit;
+	}
+
 	// ---------- Render helpers ----------
 
 	private function render_header( string $title, string $subtitle = '' ): void {
-		$updated = isset( $_GET['updated'] ) && '1' === $_GET['updated']; // phpcs:ignore
+		// phpcs:disable WordPress.Security.NonceVerification.Recommended
+		$updated      = isset( $_GET['updated'] )      && '1' === $_GET['updated'];
+		$reset        = isset( $_GET['reset'] )        && '1' === $_GET['reset'];
+		$import_error = isset( $_GET['import_error'] ) ? (int) $_GET['import_error'] : 0;
+		// phpcs:enable
 		?>
 		<div class="wadl-wrap">
 		<div class="wadl-header">
@@ -76,6 +152,16 @@ class WADL_Admin {
 		<div class="wadl-notice wadl-notice--success">
 			<span class="dashicons dashicons-yes-alt"></span>
 			<?php esc_html_e( 'Réglages sauvegardés.', 'wp-analytics-datalayer' ); ?>
+		</div>
+		<?php elseif ( $reset ) : ?>
+		<div class="wadl-notice wadl-notice--success">
+			<span class="dashicons dashicons-yes-alt"></span>
+			<?php esc_html_e( 'Réglages réinitialisés aux valeurs par défaut.', 'wp-analytics-datalayer' ); ?>
+		</div>
+		<?php elseif ( $import_error ) : ?>
+		<div class="wadl-notice wadl-notice--warning">
+			<span class="dashicons dashicons-warning"></span>
+			<?php esc_html_e( 'Erreur lors de l\'import — vérifiez que le fichier est un JSON valide exporté depuis ce plugin.', 'wp-analytics-datalayer' ); ?>
 		</div>
 		<?php endif; ?>
 		<?php $this->render_nav(); ?>
@@ -229,6 +315,67 @@ class WADL_Admin {
 						</div>
 					</li>
 				</ol>
+			</div>
+
+		</div>
+
+			<div class="wadl-panel wadl-panel--tools">
+				<h2 class="wadl-panel__title"><?php esc_html_e( 'Outils', 'wp-analytics-datalayer' ); ?></h2>
+				<div class="wadl-tools">
+
+					<!-- Export -->
+					<div class="wadl-tool">
+						<div class="wadl-tool__info">
+							<strong><?php esc_html_e( 'Exporter les réglages', 'wp-analytics-datalayer' ); ?></strong>
+							<p><?php esc_html_e( 'Télécharge la configuration actuelle au format JSON.', 'wp-analytics-datalayer' ); ?></p>
+						</div>
+						<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+							<input type="hidden" name="action" value="wadl_export_settings">
+							<?php wp_nonce_field( 'wadl_export_settings', 'wadl_nonce' ); ?>
+							<button type="submit" class="wadl-btn wadl-btn--secondary">
+								<span class="dashicons dashicons-download"></span>
+								<?php esc_html_e( 'Exporter', 'wp-analytics-datalayer' ); ?>
+							</button>
+						</form>
+					</div>
+
+					<!-- Import -->
+					<div class="wadl-tool">
+						<div class="wadl-tool__info">
+							<strong><?php esc_html_e( 'Importer des réglages', 'wp-analytics-datalayer' ); ?></strong>
+							<p><?php esc_html_e( 'Restaure une configuration depuis un fichier JSON précédemment exporté.', 'wp-analytics-datalayer' ); ?></p>
+						</div>
+						<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" enctype="multipart/form-data" class="wadl-import-form">
+							<input type="hidden" name="action" value="wadl_import_settings">
+							<?php wp_nonce_field( 'wadl_import_settings', 'wadl_nonce' ); ?>
+							<label class="wadl-file-label">
+								<span class="dashicons dashicons-upload"></span>
+								<span class="wadl-file-label__text"><?php esc_html_e( 'Choisir un fichier JSON…', 'wp-analytics-datalayer' ); ?></span>
+								<input type="file" name="wadl_import_file" accept=".json" class="wadl-file-input">
+							</label>
+							<button type="submit" class="wadl-btn wadl-btn--secondary" id="wadl-import-btn" disabled>
+								<?php esc_html_e( 'Importer', 'wp-analytics-datalayer' ); ?>
+							</button>
+						</form>
+					</div>
+
+					<!-- Reset -->
+					<div class="wadl-tool wadl-tool--danger">
+						<div class="wadl-tool__info">
+							<strong><?php esc_html_e( 'Réinitialiser', 'wp-analytics-datalayer' ); ?></strong>
+							<p><?php esc_html_e( 'Remet tous les réglages aux valeurs par défaut. Action irréversible.', 'wp-analytics-datalayer' ); ?></p>
+						</div>
+						<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" onsubmit="return confirm('<?php esc_attr_e( 'Réinitialiser tous les réglages ?', 'wp-analytics-datalayer' ); ?>')">
+							<input type="hidden" name="action" value="wadl_reset_settings">
+							<?php wp_nonce_field( 'wadl_reset_settings', 'wadl_nonce' ); ?>
+							<button type="submit" class="wadl-btn wadl-btn--danger">
+								<span class="dashicons dashicons-trash"></span>
+								<?php esc_html_e( 'Réinitialiser', 'wp-analytics-datalayer' ); ?>
+							</button>
+						</form>
+					</div>
+
+				</div>
 			</div>
 
 		</div>

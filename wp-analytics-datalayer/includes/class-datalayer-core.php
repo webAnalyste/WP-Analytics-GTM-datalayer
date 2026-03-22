@@ -4,55 +4,55 @@ defined( 'ABSPATH' ) || exit;
 class WADL_Core {
 
 	/**
-	 * Default settings — everything off by default (privacy-first).
+	 * Default settings — privacy-first (most fields off by default).
 	 */
 	public static function get_defaults(): array {
 		return [
 			// Content — Page context
-			'content_page_template'       => 0,
-			'content_page_type'           => 1,
-			'content_page_title'          => 1,
-			'content_page_url'            => 1,
-			'content_post_type'           => 0,
-			'content_post_id'             => 0,
-			'content_post_slug'           => 0,
+			'content_page_template'        => 0,
+			'content_page_type'            => 1,
+			'content_page_title'           => 1,
+			'content_page_url'             => 1,
+			'content_post_type'            => 0,
+			'content_post_id'              => 0,
+			'content_post_slug'            => 0,
 			// Content — Classification
-			'content_categories'          => 1,
-			'content_tags'                => 0,
-			'content_main_taxonomy'       => 0,
-			'content_author_id_hashed'    => 0,
-			'content_publish_date'        => 0,
-			'content_modified_date'       => 0,
+			'content_categories'           => 1,
+			'content_tags'                 => 0,
+			'content_main_taxonomy'        => 0,
+			'content_author_id_hashed'     => 0,
+			'content_publish_date'         => 0,
+			'content_modified_date'        => 0,
 			// Content — Navigation
-			'content_pagination_number'   => 0,
-			'content_search_term'         => 1,
-			'content_search_results_count'=> 1,
+			'content_pagination_number'    => 0,
+			'content_search_term'          => 1,
+			'content_search_results_count' => 1,
 			// User
-			'user_logged_in'              => 1,
-			'user_role'                   => 0,
-			'user_id_hashed'              => 0,
-			'user_customer_status'        => 0,
+			'user_logged_in'               => 1,
+			'user_role'                    => 0,
+			'user_id_hashed'               => 0,
+			'user_customer_status'         => 0,
 			// GA4 Events — Catalogue
-			'event_view_item_list'        => 0,
-			'event_select_item'           => 0,
-			'event_view_item'             => 0,
+			'event_view_item_list'         => 0,
+			'event_select_item'            => 0,
+			'event_view_item'              => 0,
 			// GA4 Events — Cart
-			'event_add_to_cart'           => 1,
-			'event_remove_from_cart'      => 0,
-			'event_view_cart'             => 0,
+			'event_add_to_cart'            => 1,
+			'event_remove_from_cart'       => 0,
+			'event_view_cart'              => 0,
 			// GA4 Events — Funnel
-			'event_begin_checkout'        => 1,
-			'event_add_shipping_info'     => 0,
-			'event_add_payment_info'      => 0,
+			'event_begin_checkout'         => 1,
+			'event_add_shipping_info'      => 0,
+			'event_add_payment_info'       => 0,
 			// GA4 Events — Purchase
-			'event_purchase'              => 1,
+			'event_purchase'               => 1,
 			// GA4 Events — Optional
-			'event_search'                => 0,
-			'event_login'                 => 0,
-			'event_sign_up'               => 0,
-			'event_add_to_wishlist'       => 0,
-			'event_view_promotion'        => 0,
-			'event_select_promotion'      => 0,
+			'event_search'                 => 0,
+			'event_login'                  => 0,
+			'event_sign_up'                => 0,
+			'event_add_to_wishlist'        => 0,
+			'event_view_promotion'         => 0,
+			'event_select_promotion'       => 0,
 		];
 	}
 
@@ -84,6 +84,70 @@ class WADL_Core {
 
 		// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
 		echo '<script>window.dataLayer = window.dataLayer || [];window.dataLayer.push(' . wp_json_encode( $payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ) . ');</script>' . "\n";
+
+		// Push any pending deferred events (login, sign_up) stored for this user.
+		self::flush_pending_user_events();
+	}
+
+	/**
+	 * Enqueue front-end JS for client-side events (select_item, checkout steps, promotions).
+	 */
+	public static function enqueue_frontend_scripts(): void {
+		$settings = self::get_settings();
+
+		$needs_js = (bool) $settings['event_select_item']
+			|| (bool) $settings['event_add_shipping_info']
+			|| (bool) $settings['event_add_payment_info']
+			|| (bool) $settings['event_view_promotion']
+			|| (bool) $settings['event_select_promotion'];
+
+		if ( ! $needs_js ) return;
+
+		wp_enqueue_script(
+			'wadl-frontend',
+			WADL_PLUGIN_URL . 'assets/frontend.js',
+			[],
+			WADL_VERSION,
+			true
+		);
+
+		wp_localize_script( 'wadl-frontend', 'wadlConfig', [
+			'currency' => function_exists( 'get_woocommerce_currency' ) ? sanitize_text_field( get_woocommerce_currency() ) : 'EUR',
+			'events'   => [
+				'select_item'        => (bool) $settings['event_select_item'],
+				'add_shipping_info'  => (bool) $settings['event_add_shipping_info'],
+				'add_payment_info'   => (bool) $settings['event_add_payment_info'],
+				'view_promotion'     => (bool) $settings['event_view_promotion'],
+				'select_promotion'   => (bool) $settings['event_select_promotion'],
+			],
+		] );
+	}
+
+	/**
+	 * Push pending user-level events (login / sign_up) stored as user meta.
+	 * Fires once then clears the flag.
+	 */
+	private static function flush_pending_user_events(): void {
+		if ( ! is_user_logged_in() ) return;
+		$user_id = get_current_user_id();
+		$pending = get_user_meta( $user_id, '_wadl_pending_event', true );
+		if ( ! $pending ) return;
+
+		$allowed = [ 'login', 'sign_up' ];
+		$event   = sanitize_key( $pending );
+		if ( ! in_array( $event, $allowed, true ) ) {
+			delete_user_meta( $user_id, '_wadl_pending_event' );
+			return;
+		}
+
+		$settings = self::get_settings();
+		$key      = 'event_' . $event;
+		if ( ! empty( $settings[ $key ] ) ) {
+			// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+			echo '<script>window.dataLayer = window.dataLayer || [];window.dataLayer.push(' . wp_json_encode( [ 'event' => $event ], JSON_UNESCAPED_UNICODE ) . ');</script>' . "\n";
+		}
+
+		delete_user_meta( $user_id, '_wadl_pending_event' );
 	}
 
 	/**
@@ -106,3 +170,5 @@ class WADL_Core {
 		return $payload;
 	}
 }
+
+add_action( 'wp_enqueue_scripts', [ 'WADL_Core', 'enqueue_frontend_scripts' ] );
