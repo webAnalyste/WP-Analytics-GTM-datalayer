@@ -66,6 +66,30 @@
   var cfg = window.wadlConfig || {};
   var events = cfg.events || {};
 
+  // ------------------------------------------------------------------
+  // add_to_cart / remove_from_cart — AJAX fragment-based push
+  //
+  // WooCommerce injects pending events into the cart fragments payload via
+  // the woocommerce_add_to_cart_fragments PHP filter. The jQuery events
+  // added_to_cart and removed_from_cart carry those fragments to the browser,
+  // allowing an immediate dataLayer push without waiting for a page reload.
+  // flush_cart_events() on wp_footer remains a fallback for non-AJAX flows.
+  // ------------------------------------------------------------------
+  if ( ( events.add_to_cart || events.remove_from_cart ) && typeof jQuery !== 'undefined' ) {
+    jQuery( document.body ).on( 'added_to_cart removed_from_cart', function ( e, fragments ) {
+      if ( ! fragments || ! Array.isArray( fragments.wadl_events ) ) return;
+      fragments.wadl_events.forEach( function ( ev ) {
+        if ( ! ev.event_name || ! ev.ecommerce ) return;
+        var data = { event: ev.event_name, ecommerce: ev.ecommerce };
+        var extra = ev.extra || {};
+        Object.keys( extra ).forEach( function ( k ) { data[ k ] = extra[ k ]; } );
+        window.dataLayer = window.dataLayer || [];
+        window.dataLayer.push( { ecommerce: null } );
+        window.dataLayer.push( data );
+      } );
+    } );
+  }
+
   document.addEventListener('DOMContentLoaded', function () {
 
     // ------------------------------------------------------------------

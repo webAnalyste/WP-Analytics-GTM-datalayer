@@ -135,7 +135,10 @@ class WADL_Core {
 	public static function enqueue_frontend_scripts(): void {
 		$settings = self::get_settings();
 
-		$needs_js = (bool) $settings['event_select_item']
+		$needs_cart_js = (bool) $settings['event_add_to_cart'] || (bool) $settings['event_remove_from_cart'];
+
+		$needs_js = $needs_cart_js
+			|| (bool) $settings['event_select_item']
 			|| (bool) $settings['event_add_shipping_info']
 			|| (bool) $settings['event_add_payment_info']
 			|| (bool) $settings['event_view_promotion']
@@ -143,10 +146,11 @@ class WADL_Core {
 
 		if ( ! $needs_js ) return;
 
+		// jQuery required only for cart events (added_to_cart / removed_from_cart jQuery events).
 		wp_enqueue_script(
 			'wadl-frontend',
 			WADL_PLUGIN_URL . 'assets/frontend.js',
-			[],
+			$needs_cart_js ? [ 'jquery' ] : [],
 			WADL_VERSION,
 			true
 		);
@@ -154,6 +158,8 @@ class WADL_Core {
 		wp_localize_script( 'wadl-frontend', 'wadlConfig', [
 			'currency' => function_exists( 'get_woocommerce_currency' ) ? sanitize_text_field( get_woocommerce_currency() ) : 'EUR',
 			'events'   => [
+				'add_to_cart'       => (bool) $settings['event_add_to_cart'],
+				'remove_from_cart'  => (bool) $settings['event_remove_from_cart'],
 				'select_item'       => (bool) $settings['event_select_item'],
 				'add_shipping_info' => (bool) $settings['event_add_shipping_info'],
 				'add_payment_info'  => (bool) $settings['event_add_payment_info'],

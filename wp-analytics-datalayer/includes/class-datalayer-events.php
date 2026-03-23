@@ -55,11 +55,13 @@ class WADL_Events {
 		if ( ! empty( $settings['event_remove_from_cart'] ) ) {
 			add_action( 'woocommerce_cart_item_removed', [ __CLASS__, 'event_remove_from_cart' ], 10, 2 );
 		}
-		// Flush pending add/remove events on the next page load.
-		// These hooks fire during WooCommerce AJAX requests whose output buffer
-		// is discarded before reaching the browser. Session-based deferred output
-		// is the only reliable approach (same pattern as login/sign_up events).
+		// For AJAX add/remove: inject events into WC cart fragments so the browser
+		// receives and pushes them immediately via the added_to_cart / removed_from_cart
+		// jQuery events — no page reload required.
+		// flush_cart_events() on wp_footer remains as fallback for non-AJAX flows
+		// (e.g. redirect-based add-to-cart, or WooCommerce Blocks).
 		if ( ! empty( $settings['event_add_to_cart'] ) || ! empty( $settings['event_remove_from_cart'] ) ) {
+			add_filter( 'woocommerce_add_to_cart_fragments', [ __CLASS__, 'inject_cart_events_fragment' ] );
 			add_action( 'wp_footer', [ __CLASS__, 'flush_cart_events' ], 5 );
 		}
 		if ( ! empty( $settings['event_view_cart'] ) ) {
@@ -103,6 +105,10 @@ class WADL_Events {
 
 	/**
 	 * Build the full cart node: { value, quantity, items }.
+	 *
+	 * Value is computed directly from cart items (product price × qty) rather than
+	 * get_cart_contents_total(), which may be stale during woocommerce_add_to_cart
+	 * because calculate_totals() has not yet run.
 	 */
 	private static function get_cart_payload(): array {
 		$wc_cart = WC()->cart;
@@ -111,14 +117,17 @@ class WADL_Events {
 		}
 		$items = [];
 		$i     = 0;
+		$value = 0.0;
 		foreach ( $wc_cart->get_cart() as $cart_item ) {
 			$product = $cart_item['data'];
 			if ( $product ) {
-				$items[] = self::map_product( $product, (int) $cart_item['quantity'], $i++ );
+				$qty     = (int) $cart_item['quantity'];
+				$items[] = self::map_product( $product, $qty, $i++ );
+				$value  += (float) $product->get_price() * $qty;
 			}
 		}
 		return [
-			'value'    => round( (float) $wc_cart->get_cart_contents_total(), 2 ),
+			'value'    => round( $value, 2 ),
 			'quantity' => (int) $wc_cart->get_cart_contents_count(),
 			'items'    => $items,
 		];
@@ -135,7 +144,27 @@ class WADL_Events {
 	}
 
 	/**
+	 * Inject pending cart events into WooCommerce cart fragments (AJAX response).
+	 * Called by woocommerce_add_to_cart_fragments — fires for both add and remove
+	 * AJAX requests (add_to_cart action and get_refreshed_fragments action).
+	 * Clears the session queue so flush_cart_events() won't duplicate them.
+	 *
+	 * @param array $fragments
+	 * @return array
+	 */
+	public static function inject_cart_events_fragment( array $fragments ): array {
+		if ( ! WC()->session ) return $fragments;
+		$pending = (array) WC()->session->get( 'wadl_pending_events', [] );
+		if ( ! empty( $pending ) ) {
+			$fragments['wadl_events'] = $pending;
+			WC()->session->set( 'wadl_pending_events', [] );
+		}
+		return $fragments;
+	}
+
+	/**
 	 * Output and clear all pending cart events stored in WC session.
+	 * Fallback for non-AJAX flows (redirect add-to-cart, WooCommerce Blocks).
 	 * Hooked on wp_footer (priority 5) when add/remove_from_cart is enabled.
 	 */
 	public static function flush_cart_events(): void {
