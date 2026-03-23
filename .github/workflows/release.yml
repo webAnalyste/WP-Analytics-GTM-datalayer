@@ -15,6 +15,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set version from tag
         id: version
@@ -31,16 +33,31 @@ jobs:
           sed -i "s/^ \* Version:.*/ * Version:     $VERSION/" \
             wp-analytics-datalayer/wp-analytics-datalayer.php
 
-      - name: Build plugin zip
+      - name: Build versioned plugin zip
+        env:
+          VERSION: ${{ steps.version.outputs.VERSION }}
         run: |
-          zip -r wp-analytics-datalayer.zip wp-analytics-datalayer/ \
+          zip -r "wp-analytics-datalayer-${VERSION}.zip" wp-analytics-datalayer/ \
             --exclude "*.git*" \
             --exclude "*/.DS_Store" \
             --exclude "*/node_modules/*"
+
+      - name: Commit versioned ZIP to main branch
+        env:
+          VERSION: ${{ steps.version.outputs.VERSION }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          git checkout main
+          git rm -f wp-analytics-datalayer-*.zip 2>/dev/null || true
+          git add "wp-analytics-datalayer-${VERSION}.zip"
+          git diff --staged --quiet || git commit -m "release: ZIP v${VERSION} [skip ci]"
+          git push origin main
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           name: "v${{ steps.version.outputs.VERSION }}"
           generate_release_notes: true
-          files: wp-analytics-datalayer.zip
+          files: wp-analytics-datalayer-${{ steps.version.outputs.VERSION }}.zip
