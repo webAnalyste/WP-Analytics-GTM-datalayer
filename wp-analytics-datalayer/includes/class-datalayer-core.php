@@ -42,6 +42,7 @@ class WADL_Core {
 			'event_add_to_cart'            => 1,
 			'event_remove_from_cart'       => 0,
 			'event_view_cart'              => 0,
+			'event_cart_all_items'         => 0,
 			// GA4 Events — Funnel
 			'event_begin_checkout'         => 1,
 			'event_add_shipping_info'      => 0,

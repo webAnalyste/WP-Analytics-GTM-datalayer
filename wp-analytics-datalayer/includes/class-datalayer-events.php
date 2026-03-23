@@ -58,6 +58,9 @@ class WADL_Events {
 		if ( ! empty( $settings['event_view_cart'] ) ) {
 			add_action( 'wp_footer', [ __CLASS__, 'event_view_cart' ] );
 		}
+		if ( ! empty( $settings['event_cart_all_items'] ) ) {
+			add_action( 'wp_head', [ __CLASS__, 'push_cart_state' ], 2 );
+		}
 		if ( ! empty( $settings['event_begin_checkout'] ) ) {
 			add_action( 'wp_footer', [ __CLASS__, 'event_begin_checkout' ] );
 		}
@@ -83,10 +86,32 @@ class WADL_Events {
 	 * Push a GA4 ecommerce event.
 	 * Clears the previous ecommerce object first (Google recommendation),
 	 * then wraps payload inside an `ecommerce` key.
+	 * Optional $extra keys are merged at the top level (e.g. cart state).
 	 */
-	private static function push_ecommerce( string $event_name, array $ecommerce ): void {
+	private static function push_ecommerce( string $event_name, array $ecommerce, array $extra = [] ): void {
+		$data = array_merge( [ 'event' => $event_name, 'ecommerce' => $ecommerce ], $extra );
 		// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
-		echo '<script>window.dataLayer = window.dataLayer || [];window.dataLayer.push({ecommerce:null});window.dataLayer.push(' . wp_json_encode( [ 'event' => $event_name, 'ecommerce' => $ecommerce ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ) . ');</script>' . "\n";
+		echo '<script>window.dataLayer = window.dataLayer || [];window.dataLayer.push({ecommerce:null});window.dataLayer.push(' . wp_json_encode( $data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ) . ');</script>' . "\n";
+	}
+
+	/**
+	 * Build the full cart node: { value, items }.
+	 */
+	private static function get_cart_payload(): array {
+		$wc_cart = WC()->cart;
+		$items   = [];
+		$i       = 0;
+		foreach ( $wc_cart->get_cart() as $cart_item ) {
+			$product = $cart_item['data'];
+			if ( $product ) {
+				$items[] = self::map_product( $product, (int) $cart_item['quantity'], $i++ );
+			}
+		}
+		return [
+			'value'    => round( (float) $wc_cart->get_cart_contents_total(), 2 ),
+			'quantity' => (int) $wc_cart->get_cart_contents_count(),
+			'items'    => $items,
+		];
 	}
 
 	public static function map_product( \WC_Product $product, int $qty = 1, int $index = 0 ): array {
@@ -141,6 +166,15 @@ class WADL_Events {
 
 	// ---------- WooCommerce events ----------
 
+	/**
+	 * Push the full cart state on initial page load (wp_head priority 2).
+	 * Outputs: window.dataLayer.push({ cart: { items: [...] } })
+	 */
+	public static function push_cart_state(): void {
+		if ( ! WC()->cart ) return;
+		self::push( [ 'cart' => self::get_cart_payload() ] );
+	}
+
 	public static function event_view_item_list(): void {
 		if ( ! ( is_shop() || is_product_category() || is_product_tag() ) ) return;
 
@@ -180,11 +214,16 @@ class WADL_Events {
 		$product = wc_get_product( $variation_id ?: $product_id );
 		if ( ! $product ) return;
 
+		$settings = WADL_Core::get_settings();
+		$extra    = ! empty( $settings['event_cart_all_items'] )
+			? [ 'cart' => self::get_cart_payload() ]
+			: [];
+
 		self::push_ecommerce( 'add_to_cart', [
 			'currency' => sanitize_text_field( get_woocommerce_currency() ),
 			'value'    => round( (float) $product->get_price() * $quantity, 2 ),
 			'items'    => [ self::map_product( $product, $quantity ) ],
-		] );
+		], $extra );
 	}
 
 	public static function event_remove_from_cart( string $cart_item_key, \WC_Cart $cart ): void {
@@ -196,11 +235,16 @@ class WADL_Events {
 		$product = wc_get_product( $item['variation_id'] ?: $item['product_id'] );
 		if ( ! $product ) return;
 
+		$settings = WADL_Core::get_settings();
+		$extra    = ! empty( $settings['event_cart_all_items'] )
+			? [ 'cart' => self::get_cart_payload() ]
+			: [];
+
 		self::push_ecommerce( 'remove_from_cart', [
 			'currency' => sanitize_text_field( get_woocommerce_currency() ),
 			'value'    => round( (float) $product->get_price() * (int) $item['quantity'], 2 ),
 			'items'    => [ self::map_product( $product, (int) $item['quantity'] ) ],
-		] );
+		], $extra );
 	}
 
 	public static function event_view_cart(): void {

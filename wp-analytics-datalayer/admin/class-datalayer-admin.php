@@ -588,6 +588,7 @@ class WADL_Admin {
 					$this->toggle( 'event_add_to_cart',      'add_to_cart',      'Déclenché à l\'ajout d\'un produit au panier.',     (bool) $settings['event_add_to_cart'] );
 					$this->toggle( 'event_remove_from_cart', 'remove_from_cart', 'Déclenché à la suppression d\'un produit du panier.',(bool) $settings['event_remove_from_cart'] );
 					$this->toggle( 'event_view_cart',        'view_cart',        'Déclenché à l\'affichage du panier.',                (bool) $settings['event_view_cart'] );
+					$this->toggle( 'event_cart_all_items',   'cart.items',       'Expose le contenu complet du panier dans cart.items à chaque page et dans les events add_to_cart / remove_from_cart.', (bool) $settings['event_cart_all_items'] );
 					?>
 				</div>
 			</div>
