@@ -3,7 +3,7 @@
  * Plugin Name: WP Analytics GTM DataLayer
  * Plugin URI:  https://github.com/webAnalyste/WP-Analytics-GTM-datalayer
  * Description: Lightweight plugin to configure a clean analytics dataLayer for GTM/GA4. Controls page context, user metadata and GA4 ecommerce events.
- * Version:     1.3.7
+ * Version:     1.3.8
  * Author:      webAnalyste
  * License:     GPL-2.0-or-later
  * Text Domain: wp-analytics-datalayer
@@ -14,7 +14,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'WADL_VERSION', '1.3.7' );
+define( 'WADL_VERSION', '1.3.8' );
 define( 'WADL_PLUGIN_FILE', __FILE__ );
 define( 'WADL_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'WADL_PLUGIN_URL', plugin_dir_url( __FILE__ ) );

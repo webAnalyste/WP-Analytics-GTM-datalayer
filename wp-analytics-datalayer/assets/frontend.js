@@ -14,10 +14,17 @@
 (function () {
   'use strict';
 
-  /** Push a single event to the dataLayer. */
+  /** Push a single (non-ecommerce) event to the dataLayer. */
   function push(event) {
     window.dataLayer = window.dataLayer || [];
     window.dataLayer.push(event);
+  }
+
+  /** Push a GA4 ecommerce event: clears previous ecommerce object first. */
+  function pushEcommerce(eventName, ecommerceData) {
+    window.dataLayer = window.dataLayer || [];
+    window.dataLayer.push({ ecommerce: null });
+    window.dataLayer.push({ event: eventName, ecommerce: ecommerceData });
   }
 
   /** Read a data attribute from the closest matching ancestor. */
@@ -78,10 +85,7 @@
         var item = window.wadlProducts[String(id)];
         if (!item) return;
 
-        push({
-          event: 'select_item',
-          items: [item],
-        });
+        pushEcommerce('select_item', { items: [item] });
       });
     }
 
@@ -98,10 +102,9 @@
         if (!selected) return;
 
         shippingPushed = true;
-        push({
-          event: 'add_shipping_info',
-          shipping_tier: selected.value || '',
+        pushEcommerce('add_shipping_info', {
           currency: cfg.currency || '',
+          shipping_tier: selected.value || '',
         });
       }
 
@@ -143,10 +146,9 @@
         if (!isPaymentInput) return;
 
         paymentPushed = true;
-        push({
-          event: 'add_payment_info',
-          payment_type: e.target.value || '',
+        pushEcommerce('add_payment_info', {
           currency: cfg.currency || '',
+          payment_type: e.target.value || '',
         });
       });
     }
@@ -165,8 +167,7 @@
           if (viewedPromos[promoId]) return;
           viewedPromos[promoId] = true;
 
-          push({
-            event: 'view_promotion',
+          pushEcommerce('view_promotion', {
             promotion_id:   el.dataset.wadlPromoId   || '',
             promotion_name: el.dataset.wadlPromoName || '',
             creative_name:  el.dataset.wadlCreative  || '',
@@ -188,8 +189,7 @@
         var promo = closest(e.target, '[data-wadl-promo-id]');
         if (!promo) return;
 
-        push({
-          event: 'select_promotion',
+        pushEcommerce('select_promotion', {
           promotion_id:   promo.dataset.wadlPromoId   || '',
           promotion_name: promo.dataset.wadlPromoName || '',
           creative_name:  promo.dataset.wadlCreative  || '',

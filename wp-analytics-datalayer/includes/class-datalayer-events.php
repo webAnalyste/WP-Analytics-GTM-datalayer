@@ -79,6 +79,16 @@ class WADL_Events {
 		echo '<script>window.dataLayer = window.dataLayer || [];window.dataLayer.push(' . wp_json_encode( $event, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ) . ');</script>' . "\n";
 	}
 
+	/**
+	 * Push a GA4 ecommerce event.
+	 * Clears the previous ecommerce object first (Google recommendation),
+	 * then wraps payload inside an `ecommerce` key.
+	 */
+	private static function push_ecommerce( string $event_name, array $ecommerce ): void {
+		// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+		echo '<script>window.dataLayer = window.dataLayer || [];window.dataLayer.push({ecommerce:null});window.dataLayer.push(' . wp_json_encode( [ 'event' => $event_name, 'ecommerce' => $ecommerce ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ) . ');</script>' . "\n";
+	}
+
 	public static function map_product( \WC_Product $product, int $qty = 1, int $index = 0 ): array {
 		$terms = get_the_terms( $product->get_id(), 'product_cat' );
 		$cats  = is_array( $terms ) ? wp_list_pluck( $terms, 'name' ) : [];
@@ -88,7 +98,6 @@ class WADL_Events {
 			'item_name'     => sanitize_text_field( $product->get_name() ),
 			'item_category' => sanitize_text_field( implode( ', ', $cats ) ),
 			'price'         => (float) $product->get_price(),
-			'currency'      => sanitize_text_field( get_woocommerce_currency() ),
 			'quantity'      => (int) $qty,
 			'index'         => $index,
 		];
@@ -148,8 +157,7 @@ class WADL_Events {
 
 		if ( empty( $items ) ) return;
 
-		self::push( [
-			'event'          => 'view_item_list',
+		self::push_ecommerce( 'view_item_list', [
 			'item_list_name' => sanitize_text_field( single_cat_title( '', false ) ?: __( 'Shop', 'wp-analytics-datalayer' ) ),
 			'items'          => $items,
 		] );
@@ -161,9 +169,10 @@ class WADL_Events {
 		$product = wc_get_product( $post->ID );
 		if ( ! $product ) return;
 
-		self::push( [
-			'event' => 'view_item',
-			'items' => [ self::map_product( $product ) ],
+		self::push_ecommerce( 'view_item', [
+			'currency' => sanitize_text_field( get_woocommerce_currency() ),
+			'value'    => (float) $product->get_price(),
+			'items'    => [ self::map_product( $product ) ],
 		] );
 	}
 
@@ -171,8 +180,7 @@ class WADL_Events {
 		$product = wc_get_product( $variation_id ?: $product_id );
 		if ( ! $product ) return;
 
-		self::push( [
-			'event'    => 'add_to_cart',
+		self::push_ecommerce( 'add_to_cart', [
 			'currency' => sanitize_text_field( get_woocommerce_currency() ),
 			'value'    => round( (float) $product->get_price() * $quantity, 2 ),
 			'items'    => [ self::map_product( $product, $quantity ) ],
@@ -188,8 +196,7 @@ class WADL_Events {
 		$product = wc_get_product( $item['variation_id'] ?: $item['product_id'] );
 		if ( ! $product ) return;
 
-		self::push( [
-			'event'    => 'remove_from_cart',
+		self::push_ecommerce( 'remove_from_cart', [
 			'currency' => sanitize_text_field( get_woocommerce_currency() ),
 			'value'    => round( (float) $product->get_price() * (int) $item['quantity'], 2 ),
 			'items'    => [ self::map_product( $product, (int) $item['quantity'] ) ],
@@ -212,8 +219,7 @@ class WADL_Events {
 
 		if ( empty( $items ) ) return;
 
-		self::push( [
-			'event'    => 'view_cart',
+		self::push_ecommerce( 'view_cart', [
 			'currency' => sanitize_text_field( get_woocommerce_currency() ),
 			'value'    => round( (float) $cart->get_cart_contents_total(), 2 ),
 			'items'    => $items,
@@ -234,8 +240,7 @@ class WADL_Events {
 			}
 		}
 
-		self::push( [
-			'event'    => 'begin_checkout',
+		self::push_ecommerce( 'begin_checkout', [
 			'currency' => sanitize_text_field( get_woocommerce_currency() ),
 			'value'    => round( (float) $cart->get_cart_contents_total(), 2 ),
 			'items'    => $items,
@@ -259,8 +264,7 @@ class WADL_Events {
 			}
 		}
 
-		self::push( [
-			'event'          => 'purchase',
+		self::push_ecommerce( 'purchase', [
 			'transaction_id' => sanitize_text_field( (string) $order->get_order_number() ),
 			'currency'       => sanitize_text_field( $order->get_currency() ),
 			'value'          => round( (float) $order->get_total(), 2 ),
@@ -315,8 +319,7 @@ class WADL_Events {
 		$product = wc_get_product( $product_id );
 		if ( ! $product ) return;
 
-		self::push( [
-			'event'    => 'add_to_wishlist',
+		self::push_ecommerce( 'add_to_wishlist', [
 			'currency' => sanitize_text_field( get_woocommerce_currency() ),
 			'value'    => (float) $product->get_price(),
 			'items'    => [ self::map_product( $product ) ],
@@ -330,8 +333,7 @@ class WADL_Events {
 		$product = wc_get_product( $product_id );
 		if ( ! $product ) return;
 
-		self::push( [
-			'event'    => 'add_to_wishlist',
+		self::push_ecommerce( 'add_to_wishlist', [
 			'currency' => sanitize_text_field( get_woocommerce_currency() ),
 			'value'    => (float) $product->get_price(),
 			'items'    => [ self::map_product( $product ) ],
