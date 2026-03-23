@@ -385,7 +385,23 @@ class WADL_Admin {
 					<div class="wadl-tool">
 						<div class="wadl-tool__info">
 							<strong><?php esc_html_e( 'Vérifier les mises à jour', 'wp-analytics-datalayer' ); ?></strong>
-							<p><?php esc_html_e( 'Force WordPress à re-contrôler immédiatement si une nouvelle version est disponible.', 'wp-analytics-datalayer' ); ?></p>
+							<?php
+							$cached_release = get_transient( WADL_Updater::CACHE_KEY );
+							if ( false === $cached_release ) {
+								echo '<p style="color:#888">' . esc_html__( 'Aucune vérification récente.', 'wp-analytics-datalayer' ) . '</p>';
+							} elseif ( is_object( $cached_release ) && ! empty( $cached_release->error ) ) {
+								echo '<p style="color:#c0392b"><strong>' . esc_html__( 'Erreur GitHub :', 'wp-analytics-datalayer' ) . '</strong> ' . esc_html( $cached_release->error ) . '</p>';
+							} elseif ( is_object( $cached_release ) && ! empty( $cached_release->tag_name ) ) {
+								$remote  = ltrim( $cached_release->tag_name, 'v' );
+								$current = WADL_VERSION;
+								if ( version_compare( $remote, $current, '>' ) ) {
+									echo '<p style="color:#27ae60">&#8593; ' . esc_html( sprintf( __( 'Mise à jour disponible : v%s \u2192 v%s', 'wp-analytics-datalayer' ), $current, $remote ) ) . '</p>';
+								} else {
+									echo '<p style="color:#27ae60">&#10003; ' . esc_html( sprintf( __( 'À jour (v%s)', 'wp-analytics-datalayer' ), $current ) ) . '</p>';
+								}
+								echo '<p style="font-size:11px;color:#888;word-break:break-all">' . esc_html( $cached_release->download_url ) . '</p>';
+							}
+							?>
 						</div>
 						<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
 							<input type="hidden" name="action" value="wadl_force_update_check">

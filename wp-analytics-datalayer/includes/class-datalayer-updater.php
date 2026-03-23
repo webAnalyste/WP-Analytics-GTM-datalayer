@@ -18,7 +18,7 @@ class WADL_Updater {
 	private const GITHUB_USER   = 'webAnalyste';
 	private const GITHUB_REPO   = 'WP-Analytics-GTM-datalayer';
 	private const GITHUB_BRANCH = 'main';
-	private const CACHE_KEY     = 'wadl_github_release';
+	public const  CACHE_KEY     = 'wadl_github_release';
 	private const CACHE_TTL     = 6 * HOUR_IN_SECONDS;
 	private const CACHE_TTL_ERR = 5 * MINUTE_IN_SECONDS;
 
@@ -77,7 +77,8 @@ class WADL_Updater {
 	private function get_release(): ?object {
 		$cached = get_transient( self::CACHE_KEY );
 		if ( false !== $cached ) {
-			return is_object( $cached ) ? $cached : null;
+			// Return null for both '' (legacy) and error objects (no tag_name).
+			return ( is_object( $cached ) && ! empty( $cached->tag_name ) ) ? $cached : null;
 		}
 
 		// Read the plugin's main PHP file to extract the Version header.
@@ -88,15 +89,29 @@ class WADL_Updater {
 			self::GITHUB_BRANCH
 		);
 
-		$response = wp_remote_get( $php_url, [
+		$args = [
 			'timeout'    => 10,
 			'user-agent' => 'WordPress/' . get_bloginfo( 'version' ) . '; ' . home_url(),
-		] );
+		];
+
+		$response = wp_remote_get( $php_url, $args );
+
+		// SSL fallback — retry without certificate verification on some hosts.
+		if ( is_wp_error( $response ) ) {
+			$response = wp_remote_get( $php_url, array_merge( $args, [ 'sslverify' => false ] ) );
+		}
 
 		$code = wp_remote_retrieve_response_code( $response );
 
-		if ( is_wp_error( $response ) || 200 !== (int) $code ) {
-			set_transient( self::CACHE_KEY, '', self::CACHE_TTL_ERR );
+		if ( is_wp_error( $response ) ) {
+			$error = (object) [ 'error' => $response->get_error_message() ];
+			set_transient( self::CACHE_KEY, $error, self::CACHE_TTL_ERR );
+			return null;
+		}
+
+		if ( 200 !== (int) $code ) {
+			$error = (object) [ 'error' => 'HTTP ' . $code ];
+			set_transient( self::CACHE_KEY, $error, self::CACHE_TTL_ERR );
 			return null;
 		}
 
