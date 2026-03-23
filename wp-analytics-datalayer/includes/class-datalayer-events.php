@@ -55,6 +55,13 @@ class WADL_Events {
 		if ( ! empty( $settings['event_remove_from_cart'] ) ) {
 			add_action( 'woocommerce_cart_item_removed', [ __CLASS__, 'event_remove_from_cart' ], 10, 2 );
 		}
+		// Flush pending add/remove events on the next page load.
+		// These hooks fire during WooCommerce AJAX requests whose output buffer
+		// is discarded before reaching the browser. Session-based deferred output
+		// is the only reliable approach (same pattern as login/sign_up events).
+		if ( ! empty( $settings['event_add_to_cart'] ) || ! empty( $settings['event_remove_from_cart'] ) ) {
+			add_action( 'wp_footer', [ __CLASS__, 'flush_cart_events' ], 5 );
+		}
 		if ( ! empty( $settings['event_view_cart'] ) ) {
 			add_action( 'wp_footer', [ __CLASS__, 'event_view_cart' ] );
 		}
@@ -95,12 +102,15 @@ class WADL_Events {
 	}
 
 	/**
-	 * Build the full cart node: { value, items }.
+	 * Build the full cart node: { value, quantity, items }.
 	 */
 	private static function get_cart_payload(): array {
 		$wc_cart = WC()->cart;
-		$items   = [];
-		$i       = 0;
+		if ( ! $wc_cart ) {
+			return [ 'value' => 0.0, 'quantity' => 0, 'items' => [] ];
+		}
+		$items = [];
+		$i     = 0;
 		foreach ( $wc_cart->get_cart() as $cart_item ) {
 			$product = $cart_item['data'];
 			if ( $product ) {
@@ -112,6 +122,31 @@ class WADL_Events {
 			'quantity' => (int) $wc_cart->get_cart_contents_count(),
 			'items'    => $items,
 		];
+	}
+
+	/**
+	 * Store a cart event in WC session for deferred output on next page load.
+	 */
+	private static function queue_cart_event( string $event_name, array $ecommerce, array $extra = [] ): void {
+		if ( ! WC()->session ) return;
+		$pending   = (array) WC()->session->get( 'wadl_pending_events', [] );
+		$pending[] = [ 'event_name' => $event_name, 'ecommerce' => $ecommerce, 'extra' => $extra ];
+		WC()->session->set( 'wadl_pending_events', $pending );
+	}
+
+	/**
+	 * Output and clear all pending cart events stored in WC session.
+	 * Hooked on wp_footer (priority 5) when add/remove_from_cart is enabled.
+	 */
+	public static function flush_cart_events(): void {
+		if ( ! WC()->session ) return;
+		$pending = (array) WC()->session->get( 'wadl_pending_events', [] );
+		if ( empty( $pending ) ) return;
+		WC()->session->set( 'wadl_pending_events', [] );
+		foreach ( $pending as $ev ) {
+			if ( ! isset( $ev['event_name'], $ev['ecommerce'] ) ) continue;
+			self::push_ecommerce( $ev['event_name'], $ev['ecommerce'], $ev['extra'] ?? [] );
+		}
 	}
 
 	public static function map_product( \WC_Product $product, int $qty = 1, int $index = 0 ): array {
@@ -219,7 +254,9 @@ class WADL_Events {
 			? [ 'cart' => self::get_cart_payload() ]
 			: [];
 
-		self::push_ecommerce( 'add_to_cart', [
+		// Queue for deferred output — woocommerce_add_to_cart fires during AJAX,
+		// any echo would be discarded by WooCommerce's output buffer.
+		self::queue_cart_event( 'add_to_cart', [
 			'currency' => sanitize_text_field( get_woocommerce_currency() ),
 			'value'    => round( (float) $product->get_price() * $quantity, 2 ),
 			'items'    => [ self::map_product( $product, $quantity ) ],
@@ -240,7 +277,7 @@ class WADL_Events {
 			? [ 'cart' => self::get_cart_payload() ]
 			: [];
 
-		self::push_ecommerce( 'remove_from_cart', [
+		self::queue_cart_event( 'remove_from_cart', [
 			'currency' => sanitize_text_field( get_woocommerce_currency() ),
 			'value'    => round( (float) $product->get_price() * (int) $item['quantity'], 2 ),
 			'items'    => [ self::map_product( $product, (int) $item['quantity'] ) ],
