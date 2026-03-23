@@ -16,7 +16,7 @@ class WADL_Updater {
 	private const GITHUB_REPO    = 'WP-Analytics-GTM-datalayer';
 	private const CACHE_KEY      = 'wadl_github_release';
 	private const CACHE_TTL      = 6 * HOUR_IN_SECONDS;
-	private const CACHE_TTL_ERR  = 30 * MINUTE_IN_SECONDS; // short TTL on API error
+	private const CACHE_TTL_ERR  = 5 * MINUTE_IN_SECONDS; // short TTL on API error
 
 	private string $plugin_basename;
 	private string $plugin_slug = 'wp-analytics-datalayer';
@@ -85,10 +85,18 @@ class WADL_Updater {
 			self::GITHUB_USER,
 			self::GITHUB_REPO
 		);
-		$response = wp_remote_get( $url, [
+		$args = [
 			'timeout'    => 10,
 			'user-agent' => 'WordPress/' . get_bloginfo( 'version' ) . '; ' . home_url(),
-		] );
+		];
+
+		// Optional GitHub token — define WADL_GITHUB_TOKEN in wp-config.php to raise
+		// the rate limit from 60 to 5 000 requests/hour (recommended for dev/staging).
+		if ( defined( 'WADL_GITHUB_TOKEN' ) && WADL_GITHUB_TOKEN ) {
+			$args['headers'] = [ 'Authorization' => 'Bearer ' . WADL_GITHUB_TOKEN ];
+		}
+
+		$response = wp_remote_get( $url, $args );
 
 		$code = wp_remote_retrieve_response_code( $response );
 
