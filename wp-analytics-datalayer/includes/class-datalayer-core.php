@@ -42,7 +42,7 @@ class WADL_Core {
 			'event_add_to_cart'            => 1,
 			'event_remove_from_cart'       => 0,
 			'event_view_cart'              => 0,
-			'event_cart_all_items'         => 0,
+			'event_update_cart'            => 0,
 			// GA4 Events — Funnel
 			'event_begin_checkout'         => 1,
 			'event_add_shipping_info'      => 0,
@@ -135,7 +135,9 @@ class WADL_Core {
 	public static function enqueue_frontend_scripts(): void {
 		$settings = self::get_settings();
 
-		$needs_cart_js = (bool) $settings['event_add_to_cart'] || (bool) $settings['event_remove_from_cart'];
+		$needs_cart_js = (bool) $settings['event_add_to_cart']
+			|| (bool) $settings['event_remove_from_cart']
+			|| (bool) $settings['event_update_cart'];
 
 		$needs_js = $needs_cart_js
 			|| (bool) $settings['event_select_item']
@@ -160,7 +162,7 @@ class WADL_Core {
 			'events'   => [
 				'add_to_cart'       => (bool) $settings['event_add_to_cart'],
 				'remove_from_cart'  => (bool) $settings['event_remove_from_cart'],
-				'cart_all_items'    => (bool) $settings['event_cart_all_items'],
+				'update_cart'       => (bool) $settings['event_update_cart'],
 				'select_item'       => (bool) $settings['event_select_item'],
 				'add_shipping_info' => (bool) $settings['event_add_shipping_info'],
 				'add_payment_info'  => (bool) $settings['event_add_payment_info'],

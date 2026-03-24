@@ -5,11 +5,12 @@ defined( 'ABSPATH' ) || exit;
  * GA4 WooCommerce events — hooked only when WooCommerce is active and the
  * corresponding toggle is enabled in settings.
  *
- * Server-side events: view_item_list, view_item, add_to_cart, remove_from_cart,
+ * Server-side events: view_item_list, view_item, remove_from_cart, update_cart,
  *                     view_cart, begin_checkout, purchase, search, login, sign_up,
  *                     add_to_wishlist.
- * Client-side events (frontend.js): select_item, add_shipping_info,
- *                     add_payment_info, view_promotion, select_promotion.
+ * Client-side events (frontend.js): add_to_cart (form CTA + AJAX buttons),
+ *                     select_item, add_shipping_info, add_payment_info,
+ *                     view_promotion, select_promotion, update_cart (via fragments).
  */
 class WADL_Events {
 
@@ -19,20 +20,19 @@ class WADL_Events {
 	 * Register cart mutation hooks early — hooked on woocommerce_init (fires during
 	 * init priority 0, before WC_Form_Handler::add_to_cart_action() on init priority 10).
 	 *
-	 * woocommerce_add_to_cart fires during init (form POST) or during WC AJAX before wp.
-	 * boot() runs on wp — too late for either case.
-	 * These hooks must therefore be registered here, independently of boot().
+	 * add_to_cart is now handled entirely client-side (frontend.js): the form.cart submit
+	 * interceptor fires at click time for form POST, and the added_to_cart jQuery event +
+	 * wadlProducts lookup fires at click time for AJAX buttons. No server-side queuing needed.
+	 *
+	 * remove_from_cart and update_cart still use the WC session → fragments pipeline.
 	 */
 	public static function boot_cart_hooks(): void {
 		$settings = WADL_Core::get_settings();
 
-		if ( ! empty( $settings['event_add_to_cart'] ) ) {
-			add_action( 'woocommerce_add_to_cart', [ __CLASS__, 'event_add_to_cart' ], 10, 6 );
-		}
 		if ( ! empty( $settings['event_remove_from_cart'] ) ) {
 			add_action( 'woocommerce_cart_item_removed', [ __CLASS__, 'event_remove_from_cart' ], 10, 2 );
 		}
-		if ( ! empty( $settings['event_add_to_cart'] ) || ! empty( $settings['event_remove_from_cart'] ) ) {
+		if ( ! empty( $settings['event_remove_from_cart'] ) || ! empty( $settings['event_update_cart'] ) ) {
 			add_filter( 'woocommerce_add_to_cart_fragments', [ __CLASS__, 'inject_cart_events_fragment' ] );
 		}
 	}
@@ -65,23 +65,19 @@ class WADL_Events {
 			add_action( 'wp_footer', [ __CLASS__, 'event_view_item_list' ] );
 		}
 		if ( ! empty( $settings['event_select_item'] ) || ! empty( $settings['event_add_to_cart'] ) ) {
-			// Output product index JSON consumed by frontend.js
+			// Output wadlProducts JSON consumed by frontend.js (select_item + add_to_cart JS interceptor)
 			add_action( 'wp_footer', [ __CLASS__, 'output_product_index' ], 5 );
 		}
 		if ( ! empty( $settings['event_view_item'] ) ) {
 			add_action( 'wp_footer', [ __CLASS__, 'event_view_item' ] );
 		}
-			// add_to_cart / remove_from_cart hooks are registered in boot_cart_hooks()
-		// on woocommerce_init — before WC_Form_Handler processes the form POST on init.
-		// Only the wp_footer flush fallback (for redirect-based flows) lives here.
-		if ( ! empty( $settings['event_add_to_cart'] ) || ! empty( $settings['event_remove_from_cart'] ) ) {
+			// remove_from_cart hooks are registered in boot_cart_hooks() on woocommerce_init.
+		// flush_cart_events() is the wp_footer fallback for non-AJAX remove flows.
+		if ( ! empty( $settings['event_remove_from_cart'] ) ) {
 			add_action( 'wp_footer', [ __CLASS__, 'flush_cart_events' ], 5 );
 		}
 		if ( ! empty( $settings['event_view_cart'] ) ) {
 			add_action( 'wp_footer', [ __CLASS__, 'event_view_cart' ] );
-		}
-		if ( ! empty( $settings['event_cart_all_items'] ) ) {
-			add_action( 'wp_head', [ __CLASS__, 'push_cart_state' ], 2 );
 		}
 		if ( ! empty( $settings['event_begin_checkout'] ) ) {
 			add_action( 'wp_footer', [ __CLASS__, 'event_begin_checkout' ] );
@@ -157,10 +153,10 @@ class WADL_Events {
 	}
 
 	/**
-	 * Inject pending cart events into WooCommerce cart fragments (AJAX response).
-	 * Called by woocommerce_add_to_cart_fragments — fires for both add and remove
-	 * AJAX requests (add_to_cart action and get_refreshed_fragments action).
-	 * Clears the session queue so flush_cart_events() won't duplicate them.
+	 * Inject pending cart events + update_cart payload into WooCommerce cart fragments.
+	 * Called by woocommerce_add_to_cart_fragments — fires for AJAX cart mutations.
+	 * Only processes actual cart-mutation actions (add_to_cart, remove_from_cart).
+	 * Skips get_refreshed_fragments (background fragment refresh on page load).
 	 *
 	 * @param array $fragments
 	 * @return array
@@ -168,21 +164,24 @@ class WADL_Events {
 	public static function inject_cart_events_fragment( array $fragments ): array {
 		if ( ! WC()->session ) return $fragments;
 
-		// Only inject pending events for actual cart-mutation AJAX actions (add_to_cart,
-		// remove_from_cart). Skipping get_refreshed_fragments — that call fires on every
-		// page load to refresh the cart widget; consuming the session queue here would
-		// leave flush_cart_events() with nothing to flush, stranding the sessionStorage
-		// flag and silently blocking the next AJAX add_to_cart push.
 		$wc_ajax = isset( $_GET['wc-ajax'] ) ? sanitize_text_field( wp_unslash( $_GET['wc-ajax'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 		if ( ! in_array( $wc_ajax, [ 'add_to_cart', 'remove_from_cart' ], true ) ) {
 			return $fragments;
 		}
 
+		// Pending events from session (e.g. remove_from_cart queued in event_remove_from_cart).
 		$pending = (array) WC()->session->get( 'wadl_pending_events', [] );
 		if ( ! empty( $pending ) ) {
 			$fragments['wadl_events'] = $pending;
 			WC()->session->set( 'wadl_pending_events', [] );
 		}
+
+		// update_cart: inject current cart state so JS can push the event.
+		$settings = WADL_Core::get_settings();
+		if ( ! empty( $settings['event_update_cart'] ) ) {
+			$fragments['wadl_update_cart'] = self::get_cart_payload();
+		}
+
 		return $fragments;
 	}
 
@@ -261,15 +260,6 @@ class WADL_Events {
 
 	// ---------- WooCommerce events ----------
 
-	/**
-	 * Push the full cart state on initial page load (wp_head priority 2).
-	 * Outputs: window.dataLayer.push({ cart: { items: [...] } })
-	 */
-	public static function push_cart_state(): void {
-		if ( ! WC()->cart ) return;
-		self::push( [ 'cart' => self::get_cart_payload() ] );
-	}
-
 	public static function event_view_item_list(): void {
 		if ( ! ( is_shop() || is_product_category() || is_product_tag() ) ) return;
 
@@ -305,32 +295,8 @@ class WADL_Events {
 		] );
 	}
 
-	public static function event_add_to_cart( string $cart_item_key, int $product_id, int $quantity, int $variation_id ): void {
-		// Non-AJAX (form POST) add-to-cart: the JS form-submit interceptor on the product
-		// page already pushes the event at click time. Queueing here would cause double
-		// tracking whenever the redirect opens in a different tab (no sessionStorage flag).
-		if ( ! wc_is_ajax() ) return;
-
-		$product = wc_get_product( $variation_id ?: $product_id );
-		if ( ! $product ) return;
-
-		$settings = WADL_Core::get_settings();
-		$extra    = ! empty( $settings['event_cart_all_items'] )
-			? [ 'cart' => self::get_cart_payload() ]
-			: [];
-
-		self::queue_cart_event( 'add_to_cart', [
-			'currency' => sanitize_text_field( get_woocommerce_currency() ),
-			'value'    => round( (float) $product->get_price() * $quantity, 2 ),
-			'items'    => [ self::map_product( $product, $quantity ) ],
-		], $extra );
-	}
-
 	public static function event_remove_from_cart( string $cart_item_key, \WC_Cart $cart ): void {
-		// Same rationale as event_add_to_cart: only queue for AJAX flows.
-		if ( ! wc_is_ajax() ) return;
-
-		// Cart item has already been removed — retrieve it from the removed_cart_contents.
+		// Cart item has already been removed — retrieve it from removed_cart_contents.
 		$removed = $cart->get_removed_cart_contents();
 		$item    = $removed[ $cart_item_key ] ?? null;
 		if ( ! $item ) return;
@@ -338,16 +304,11 @@ class WADL_Events {
 		$product = wc_get_product( $item['variation_id'] ?: $item['product_id'] );
 		if ( ! $product ) return;
 
-		$settings = WADL_Core::get_settings();
-		$extra    = ! empty( $settings['event_cart_all_items'] )
-			? [ 'cart' => self::get_cart_payload() ]
-			: [];
-
 		self::queue_cart_event( 'remove_from_cart', [
 			'currency' => sanitize_text_field( get_woocommerce_currency() ),
 			'value'    => round( (float) $product->get_price() * (int) $item['quantity'], 2 ),
 			'items'    => [ self::map_product( $product, (int) $item['quantity'] ) ],
-		], $extra );
+		] );
 	}
 
 	public static function event_view_cart(): void {

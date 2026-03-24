@@ -67,26 +67,56 @@
   var events = cfg.events || {};
 
   // ------------------------------------------------------------------
-  // add_to_cart / remove_from_cart — AJAX fragment-based push
+  // add_to_cart (AJAX) — pure JS using $button + wadlProducts
   //
-  // WooCommerce injects pending events into the cart fragments payload via
-  // the woocommerce_add_to_cart_fragments PHP filter. The jQuery events
-  // added_to_cart and removed_from_cart carry those fragments to the browser,
-  // allowing an immediate dataLayer push without waiting for a page reload.
-  // flush_cart_events() on wp_footer remains a fallback for non-AJAX flows.
+  // For AJAX add-to-cart buttons (shop / category pages), WooCommerce fires
+  // the added_to_cart jQuery event with the clicked button as 4th argument.
+  // We look up the product in wadlProducts (injected server-side) and push
+  // the event immediately — no PHP session involvement.
+  //
+  // remove_from_cart — PHP session → fragments → JS push
+  // update_cart      — PHP fragments → JS push (cart state after any AJAX mutation)
   // ------------------------------------------------------------------
-  if ( ( events.add_to_cart || events.remove_from_cart ) && typeof jQuery !== 'undefined' ) {
-    jQuery( document.body ).on( 'added_to_cart removed_from_cart', function ( e, fragments ) {
-      if ( ! fragments || ! Array.isArray( fragments.wadl_events ) ) return;
-      fragments.wadl_events.forEach( function ( ev ) {
-        if ( ! ev.event_name || ! ev.ecommerce ) return;
-        var data = { event: ev.event_name, ecommerce: ev.ecommerce };
-        var extra = ev.extra || {};
-        Object.keys( extra ).forEach( function ( k ) { data[ k ] = extra[ k ]; } );
-        window.dataLayer = window.dataLayer || [];
-        window.dataLayer.push( { ecommerce: null } );
-        window.dataLayer.push( data );
-      } );
+  if ( ( events.add_to_cart || events.remove_from_cart || events.update_cart ) && typeof jQuery !== 'undefined' ) {
+
+    jQuery( document.body ).on( 'added_to_cart', function ( e, fragments, cart_hash, $button ) {
+      // add_to_cart: resolve product from clicked button
+      if ( events.add_to_cart && $button && window.wadlProducts ) {
+        var productId = String( $button.data( 'product_id' ) || $button.attr( 'data-product_id' ) || '' );
+        if ( productId ) {
+          var item = window.wadlProducts[ productId ];
+          if ( item ) {
+            pushEcommerce( 'add_to_cart', {
+              currency: cfg.currency || '',
+              value: parseFloat( item.price || 0 ),
+              items: [ Object.assign( {}, item, { quantity: 1 } ) ],
+            } );
+          }
+        }
+      }
+      // update_cart: full cart state from fragments
+      if ( events.update_cart && fragments && fragments.wadl_update_cart ) {
+        push( { event: 'update_cart', cart: fragments.wadl_update_cart } );
+      }
+    } );
+
+    jQuery( document.body ).on( 'removed_from_cart', function ( e, fragments ) {
+      // remove_from_cart: queued server-side, delivered via fragments
+      if ( events.remove_from_cart && fragments && Array.isArray( fragments.wadl_events ) ) {
+        fragments.wadl_events.forEach( function ( ev ) {
+          if ( ! ev.event_name || ! ev.ecommerce ) return;
+          var data = { event: ev.event_name, ecommerce: ev.ecommerce };
+          var extra = ev.extra || {};
+          Object.keys( extra ).forEach( function ( k ) { data[ k ] = extra[ k ]; } );
+          window.dataLayer = window.dataLayer || [];
+          window.dataLayer.push( { ecommerce: null } );
+          window.dataLayer.push( data );
+        } );
+      }
+      // update_cart: full cart state from fragments
+      if ( events.update_cart && fragments && fragments.wadl_update_cart ) {
+        push( { event: 'update_cart', cart: fragments.wadl_update_cart } );
+      }
     } );
   }
 
@@ -95,8 +125,7 @@
     // ------------------------------------------------------------------
     // add_to_cart — single product page form submit interceptor
     // Fires at click/submit time, before the WooCommerce form POST redirect.
-    // Sets sessionStorage.wadlAtcHandled so flush_cart_events() (wp_footer)
-    // skips the deferred server-side push on the next page load.
+    // update_cart is not fired here (form POST flow — no AJAX fragments).
     // ------------------------------------------------------------------
     if (events.add_to_cart && window.wadlProducts) {
       var cartForm = document.querySelector('form.cart');
@@ -110,50 +139,11 @@
           var qtyInput = cartForm.querySelector('[name="quantity"]');
           var qty = parseInt(qtyInput ? qtyInput.value : '1', 10) || 1;
 
-          var eventItem = {};
-          Object.keys(item).forEach(function (k) { eventItem[k] = item[k]; });
-          eventItem.quantity = qty;
-
-          var pushData = {
-            event: 'add_to_cart',
-            ecommerce: {
-              currency: cfg.currency || '',
-              value: parseFloat(item.price || 0) * qty,
-              items: [eventItem],
-            },
-          };
-
-          // Compute post-add cart node from current DL state (requires event_cart_all_items).
-          if (events.cart_all_items) {
-            var currentCart = null;
-            var dl = window.dataLayer || [];
-            for (var i = dl.length - 1; i >= 0; i--) {
-              if (dl[i] && dl[i].cart) { currentCart = dl[i].cart; break; }
-            }
-            if (currentCart) {
-              var newItems = (currentCart.items || []).map(function (it) { return Object.assign({}, it); });
-              var found = false;
-              for (var j = 0; j < newItems.length; j++) {
-                if (newItems[j].item_id === eventItem.item_id) {
-                  newItems[j] = Object.assign({}, newItems[j], { quantity: (newItems[j].quantity || 0) + qty });
-                  found = true;
-                  break;
-                }
-              }
-              if (!found) { newItems.push(Object.assign({}, eventItem)); }
-              var newValue = 0;
-              newItems.forEach(function (it) { newValue += parseFloat(it.price || 0) * (it.quantity || 1); });
-              pushData.cart = {
-                value: Math.round(newValue * 100) / 100,
-                quantity: newItems.reduce(function (s, it) { return s + (it.quantity || 1); }, 0),
-                items: newItems,
-              };
-            }
-          }
-
-          window.dataLayer = window.dataLayer || [];
-          window.dataLayer.push({ ecommerce: null });
-          window.dataLayer.push(pushData);
+          pushEcommerce('add_to_cart', {
+            currency: cfg.currency || '',
+            value: parseFloat(item.price || 0) * qty,
+            items: [ Object.assign({}, item, { quantity: qty }) ],
+          });
         });
       }
     }
