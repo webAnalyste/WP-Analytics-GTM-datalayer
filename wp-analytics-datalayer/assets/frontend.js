@@ -77,6 +77,12 @@
   // ------------------------------------------------------------------
   if ( ( events.add_to_cart || events.remove_from_cart ) && typeof jQuery !== 'undefined' ) {
     jQuery( document.body ).on( 'added_to_cart removed_from_cart', function ( e, fragments ) {
+      // If form.cart submit interceptor already pushed (AJAX-enabled theme on product page),
+      // skip to avoid duplicate — clear the flag so flush_cart_events() also skips.
+      if ( sessionStorage.getItem( 'wadlAtcHandled' ) ) {
+        sessionStorage.removeItem( 'wadlAtcHandled' );
+        return;
+      }
       if ( ! fragments || ! Array.isArray( fragments.wadl_events ) ) return;
       fragments.wadl_events.forEach( function ( ev ) {
         if ( ! ev.event_name || ! ev.ecommerce ) return;
@@ -91,6 +97,36 @@
   }
 
   document.addEventListener('DOMContentLoaded', function () {
+
+    // ------------------------------------------------------------------
+    // add_to_cart — single product page form submit interceptor
+    // Fires at click/submit time, before the WooCommerce form POST redirect.
+    // Sets sessionStorage.wadlAtcHandled so flush_cart_events() (wp_footer)
+    // skips the deferred server-side push on the next page load.
+    // ------------------------------------------------------------------
+    if (events.add_to_cart && window.wadlProducts) {
+      var cartForm = document.querySelector('form.cart');
+      if (cartForm) {
+        cartForm.addEventListener('submit', function () {
+          var input = cartForm.querySelector('[name="add-to-cart"]');
+          var productId = input ? String(input.value) : null;
+          if (!productId) return;
+          var item = window.wadlProducts[productId];
+          if (!item) return;
+          var qtyInput = cartForm.querySelector('[name="quantity"]');
+          var qty = parseInt(qtyInput ? qtyInput.value : '1', 10) || 1;
+          var eventItem = {};
+          Object.keys(item).forEach(function (k) { eventItem[k] = item[k]; });
+          eventItem.quantity = qty;
+          sessionStorage.setItem('wadlAtcHandled', '1');
+          pushEcommerce('add_to_cart', {
+            currency: cfg.currency || '',
+            value: parseFloat(item.price || 0) * qty,
+            items: [eventItem],
+          });
+        });
+      }
+    }
 
     // ------------------------------------------------------------------
     // select_item

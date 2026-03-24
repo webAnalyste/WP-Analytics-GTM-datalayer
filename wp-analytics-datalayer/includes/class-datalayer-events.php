@@ -64,7 +64,7 @@ class WADL_Events {
 		if ( ! empty( $settings['event_view_item_list'] ) ) {
 			add_action( 'wp_footer', [ __CLASS__, 'event_view_item_list' ] );
 		}
-		if ( ! empty( $settings['event_select_item'] ) ) {
+		if ( ! empty( $settings['event_select_item'] ) || ! empty( $settings['event_add_to_cart'] ) ) {
 			// Output product index JSON consumed by frontend.js
 			add_action( 'wp_footer', [ __CLASS__, 'output_product_index' ], 5 );
 		}
@@ -185,10 +185,12 @@ class WADL_Events {
 		$pending = (array) WC()->session->get( 'wadl_pending_events', [] );
 		if ( empty( $pending ) ) return;
 		WC()->session->set( 'wadl_pending_events', [] );
-		foreach ( $pending as $ev ) {
-			if ( ! isset( $ev['event_name'], $ev['ecommerce'] ) ) continue;
-			self::push_ecommerce( $ev['event_name'], $ev['ecommerce'], $ev['extra'] ?? [] );
-		}
+
+		// Gate: if the JS form-submit interceptor already pushed this event (single product
+		// page CTA, form POST flow), skip to avoid a duplicate. The interceptor sets
+		// sessionStorage.wadlAtcHandled before navigation; we check and clear it here.
+		// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+		echo '<script>(function(){if(sessionStorage.getItem("wadlAtcHandled")){sessionStorage.removeItem("wadlAtcHandled");return;}var p=' . wp_json_encode( $pending, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ) . ';window.dataLayer=window.dataLayer||[];p.forEach(function(ev){if(!ev.event_name||!ev.ecommerce)return;var d=Object.assign({},{event:ev.event_name,ecommerce:ev.ecommerce},ev.extra||{});window.dataLayer.push({ecommerce:null});window.dataLayer.push(d);});})();</script>' . "\n";
 	}
 
 	public static function map_product( \WC_Product $product, int $qty = 1, int $index = 0 ): array {
@@ -222,16 +224,23 @@ class WADL_Events {
 	// ---------- Product index for select_item (JS) ----------
 
 	public static function output_product_index(): void {
-		if ( ! ( is_shop() || is_product_category() || is_product_tag() || is_search() ) ) return;
+		$index = [];
+		$i     = 0;
 
-		global $wp_query;
-		$index   = [];
-		$i       = 0;
-
-		foreach ( (array) $wp_query->posts as $post ) {
+		if ( is_product() ) {
+			// Single product page — expose current product for the add_to_cart form interceptor.
+			global $post;
 			$product = wc_get_product( $post->ID );
 			if ( $product ) {
-				$index[ (string) $product->get_id() ] = self::map_product( $product, 1, $i++ );
+				$index[ (string) $product->get_id() ] = self::map_product( $product, 1, 0 );
+			}
+		} elseif ( is_shop() || is_product_category() || is_product_tag() || is_search() ) {
+			global $wp_query;
+			foreach ( (array) $wp_query->posts as $post ) {
+				$product = wc_get_product( $post->ID );
+				if ( $product ) {
+					$index[ (string) $product->get_id() ] = self::map_product( $product, 1, $i++ );
+				}
 			}
 		}
 
