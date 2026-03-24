@@ -15,6 +15,28 @@ class WADL_Events {
 
 	private static bool $booted = false;
 
+	/**
+	 * Register cart mutation hooks early — hooked on woocommerce_init (fires during
+	 * init priority 0, before WC_Form_Handler::add_to_cart_action() on init priority 10).
+	 *
+	 * woocommerce_add_to_cart fires during init (form POST) or during WC AJAX before wp.
+	 * boot() runs on wp — too late for either case.
+	 * These hooks must therefore be registered here, independently of boot().
+	 */
+	public static function boot_cart_hooks(): void {
+		$settings = WADL_Core::get_settings();
+
+		if ( ! empty( $settings['event_add_to_cart'] ) ) {
+			add_action( 'woocommerce_add_to_cart', [ __CLASS__, 'event_add_to_cart' ], 10, 6 );
+		}
+		if ( ! empty( $settings['event_remove_from_cart'] ) ) {
+			add_action( 'woocommerce_cart_item_removed', [ __CLASS__, 'event_remove_from_cart' ], 10, 2 );
+		}
+		if ( ! empty( $settings['event_add_to_cart'] ) || ! empty( $settings['event_remove_from_cart'] ) ) {
+			add_filter( 'woocommerce_add_to_cart_fragments', [ __CLASS__, 'inject_cart_events_fragment' ] );
+		}
+	}
+
 	public static function boot(): void {
 		if ( self::$booted ) return;
 		self::$booted = true;
@@ -49,19 +71,10 @@ class WADL_Events {
 		if ( ! empty( $settings['event_view_item'] ) ) {
 			add_action( 'wp_footer', [ __CLASS__, 'event_view_item' ] );
 		}
-		if ( ! empty( $settings['event_add_to_cart'] ) ) {
-			add_action( 'woocommerce_add_to_cart', [ __CLASS__, 'event_add_to_cart' ], 10, 6 );
-		}
-		if ( ! empty( $settings['event_remove_from_cart'] ) ) {
-			add_action( 'woocommerce_cart_item_removed', [ __CLASS__, 'event_remove_from_cart' ], 10, 2 );
-		}
-		// For AJAX add/remove: inject events into WC cart fragments so the browser
-		// receives and pushes them immediately via the added_to_cart / removed_from_cart
-		// jQuery events — no page reload required.
-		// flush_cart_events() on wp_footer remains as fallback for non-AJAX flows
-		// (e.g. redirect-based add-to-cart, or WooCommerce Blocks).
+			// add_to_cart / remove_from_cart hooks are registered in boot_cart_hooks()
+		// on woocommerce_init — before WC_Form_Handler processes the form POST on init.
+		// Only the wp_footer flush fallback (for redirect-based flows) lives here.
 		if ( ! empty( $settings['event_add_to_cart'] ) || ! empty( $settings['event_remove_from_cart'] ) ) {
-			add_filter( 'woocommerce_add_to_cart_fragments', [ __CLASS__, 'inject_cart_events_fragment' ] );
 			add_action( 'wp_footer', [ __CLASS__, 'flush_cart_events' ], 5 );
 		}
 		if ( ! empty( $settings['event_view_cart'] ) ) {
@@ -451,4 +464,7 @@ class WADL_Events {
 	}
 }
 
+// Cart mutation hooks must be registered before woocommerce_add_to_cart fires (init).
+add_action( 'woocommerce_init', [ 'WADL_Events', 'boot_cart_hooks' ] );
+// All other hooks (rendering, output) can wait for wp.
 add_action( 'wp', [ 'WADL_Events', 'boot' ] );
