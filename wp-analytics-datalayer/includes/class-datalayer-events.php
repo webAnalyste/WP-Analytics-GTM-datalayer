@@ -194,23 +194,12 @@ class WADL_Events {
 	public static function flush_cart_events(): void {
 		if ( ! WC()->session ) return;
 		$pending = (array) WC()->session->get( 'wadl_pending_events', [] );
-		WC()->session->set( 'wadl_pending_events', [] ); // always clear, regardless of content
-
-		if ( empty( $pending ) ) {
-			// Nothing to push — but always clean up any stranded sessionStorage flag.
-			// If the session was empty (race condition, session not started, or events
-			// already consumed elsewhere), the flag set by the JS form-submit interceptor
-			// would otherwise persist and silently block the next AJAX add_to_cart push.
-			// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
-			echo '<script>sessionStorage.removeItem("wadlAtcHandled");</script>' . "\n";
-			return;
+		if ( empty( $pending ) ) return;
+		WC()->session->set( 'wadl_pending_events', [] );
+		foreach ( $pending as $ev ) {
+			if ( ! isset( $ev['event_name'], $ev['ecommerce'] ) ) continue;
+			self::push_ecommerce( $ev['event_name'], $ev['ecommerce'], $ev['extra'] ?? [] );
 		}
-
-		// Gate: if the JS form-submit interceptor already pushed this event (single product
-		// page CTA, form POST flow), skip to avoid a duplicate. The interceptor sets
-		// sessionStorage.wadlAtcHandled before navigation; we check and clear it here.
-		// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
-		echo '<script>(function(){if(sessionStorage.getItem("wadlAtcHandled")){sessionStorage.removeItem("wadlAtcHandled");return;}var p=' . wp_json_encode( $pending, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ) . ';window.dataLayer=window.dataLayer||[];p.forEach(function(ev){if(!ev.event_name||!ev.ecommerce)return;var d=Object.assign({},{event:ev.event_name,ecommerce:ev.ecommerce},ev.extra||{});window.dataLayer.push({ecommerce:null});window.dataLayer.push(d);});})();</script>' . "\n";
 	}
 
 	public static function map_product( \WC_Product $product, int $qty = 1, int $index = 0 ): array {
@@ -317,6 +306,11 @@ class WADL_Events {
 	}
 
 	public static function event_add_to_cart( string $cart_item_key, int $product_id, int $quantity, int $variation_id ): void {
+		// Non-AJAX (form POST) add-to-cart: the JS form-submit interceptor on the product
+		// page already pushes the event at click time. Queueing here would cause double
+		// tracking whenever the redirect opens in a different tab (no sessionStorage flag).
+		if ( ! wc_is_ajax() ) return;
+
 		$product = wc_get_product( $variation_id ?: $product_id );
 		if ( ! $product ) return;
 
@@ -325,8 +319,6 @@ class WADL_Events {
 			? [ 'cart' => self::get_cart_payload() ]
 			: [];
 
-		// Queue for deferred output — woocommerce_add_to_cart fires during AJAX,
-		// any echo would be discarded by WooCommerce's output buffer.
 		self::queue_cart_event( 'add_to_cart', [
 			'currency' => sanitize_text_field( get_woocommerce_currency() ),
 			'value'    => round( (float) $product->get_price() * $quantity, 2 ),
@@ -335,6 +327,9 @@ class WADL_Events {
 	}
 
 	public static function event_remove_from_cart( string $cart_item_key, \WC_Cart $cart ): void {
+		// Same rationale as event_add_to_cart: only queue for AJAX flows.
+		if ( ! wc_is_ajax() ) return;
+
 		// Cart item has already been removed — retrieve it from the removed_cart_contents.
 		$removed = $cart->get_removed_cart_contents();
 		$item    = $removed[ $cart_item_key ] ?? null;

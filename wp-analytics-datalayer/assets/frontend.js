@@ -77,12 +77,6 @@
   // ------------------------------------------------------------------
   if ( ( events.add_to_cart || events.remove_from_cart ) && typeof jQuery !== 'undefined' ) {
     jQuery( document.body ).on( 'added_to_cart removed_from_cart', function ( e, fragments ) {
-      // If form.cart submit interceptor already pushed (AJAX-enabled theme on product page),
-      // skip to avoid duplicate — clear the flag so flush_cart_events() also skips.
-      if ( sessionStorage.getItem( 'wadlAtcHandled' ) ) {
-        sessionStorage.removeItem( 'wadlAtcHandled' );
-        return;
-      }
       if ( ! fragments || ! Array.isArray( fragments.wadl_events ) ) return;
       fragments.wadl_events.forEach( function ( ev ) {
         if ( ! ev.event_name || ! ev.ecommerce ) return;
@@ -157,7 +151,6 @@
             }
           }
 
-          sessionStorage.setItem('wadlAtcHandled', '1');
           window.dataLayer = window.dataLayer || [];
           window.dataLayer.push({ ecommerce: null });
           window.dataLayer.push(pushData);
