@@ -167,6 +167,17 @@ class WADL_Events {
 	 */
 	public static function inject_cart_events_fragment( array $fragments ): array {
 		if ( ! WC()->session ) return $fragments;
+
+		// Only inject pending events for actual cart-mutation AJAX actions (add_to_cart,
+		// remove_from_cart). Skipping get_refreshed_fragments — that call fires on every
+		// page load to refresh the cart widget; consuming the session queue here would
+		// leave flush_cart_events() with nothing to flush, stranding the sessionStorage
+		// flag and silently blocking the next AJAX add_to_cart push.
+		$wc_ajax = isset( $_GET['wc-ajax'] ) ? sanitize_text_field( wp_unslash( $_GET['wc-ajax'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		if ( ! in_array( $wc_ajax, [ 'add_to_cart', 'remove_from_cart' ], true ) ) {
+			return $fragments;
+		}
+
 		$pending = (array) WC()->session->get( 'wadl_pending_events', [] );
 		if ( ! empty( $pending ) ) {
 			$fragments['wadl_events'] = $pending;
