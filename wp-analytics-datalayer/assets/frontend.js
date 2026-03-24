@@ -115,15 +115,52 @@
           if (!item) return;
           var qtyInput = cartForm.querySelector('[name="quantity"]');
           var qty = parseInt(qtyInput ? qtyInput.value : '1', 10) || 1;
+
           var eventItem = {};
           Object.keys(item).forEach(function (k) { eventItem[k] = item[k]; });
           eventItem.quantity = qty;
+
+          var pushData = {
+            event: 'add_to_cart',
+            ecommerce: {
+              currency: cfg.currency || '',
+              value: parseFloat(item.price || 0) * qty,
+              items: [eventItem],
+            },
+          };
+
+          // Compute post-add cart node from current DL state (requires event_cart_all_items).
+          if (events.cart_all_items) {
+            var currentCart = null;
+            var dl = window.dataLayer || [];
+            for (var i = dl.length - 1; i >= 0; i--) {
+              if (dl[i] && dl[i].cart) { currentCart = dl[i].cart; break; }
+            }
+            if (currentCart) {
+              var newItems = (currentCart.items || []).map(function (it) { return Object.assign({}, it); });
+              var found = false;
+              for (var j = 0; j < newItems.length; j++) {
+                if (newItems[j].item_id === eventItem.item_id) {
+                  newItems[j] = Object.assign({}, newItems[j], { quantity: (newItems[j].quantity || 0) + qty });
+                  found = true;
+                  break;
+                }
+              }
+              if (!found) { newItems.push(Object.assign({}, eventItem)); }
+              var newValue = 0;
+              newItems.forEach(function (it) { newValue += parseFloat(it.price || 0) * (it.quantity || 1); });
+              pushData.cart = {
+                value: Math.round(newValue * 100) / 100,
+                quantity: newItems.reduce(function (s, it) { return s + (it.quantity || 1); }, 0),
+                items: newItems,
+              };
+            }
+          }
+
           sessionStorage.setItem('wadlAtcHandled', '1');
-          pushEcommerce('add_to_cart', {
-            currency: cfg.currency || '',
-            value: parseFloat(item.price || 0) * qty,
-            items: [eventItem],
-          });
+          window.dataLayer = window.dataLayer || [];
+          window.dataLayer.push({ ecommerce: null });
+          window.dataLayer.push(pushData);
         });
       }
     }

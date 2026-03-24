@@ -160,6 +160,7 @@ class WADL_Core {
 			'events'   => [
 				'add_to_cart'       => (bool) $settings['event_add_to_cart'],
 				'remove_from_cart'  => (bool) $settings['event_remove_from_cart'],
+				'cart_all_items'    => (bool) $settings['event_cart_all_items'],
 				'select_item'       => (bool) $settings['event_select_item'],
 				'add_shipping_info' => (bool) $settings['event_add_shipping_info'],
 				'add_payment_info'  => (bool) $settings['event_add_payment_info'],
