@@ -36,7 +36,7 @@ class WADL_Events {
 	public static function boot_cart_hooks(): void {
 		$settings = WADL_Core::get_settings();
 
-		if ( ! empty( $settings['event_add_to_cart'] ) ) {
+		if ( ! empty( $settings['event_add_to_cart'] ) || ! empty( $settings['event_update_cart'] ) ) {
 			add_action( 'woocommerce_add_to_cart', [ __CLASS__, 'event_add_to_cart' ], 10, 6 );
 		}
 		if ( ! empty( $settings['event_remove_from_cart'] ) ) {
@@ -87,6 +87,10 @@ class WADL_Events {
 			// remove_from_cart: wp_footer fallback for non-AJAX remove flows.
 		if ( ! empty( $settings['event_remove_from_cart'] ) ) {
 			add_action( 'wp_footer', [ __CLASS__, 'flush_cart_events' ], 5 );
+		}
+		// update_cart: wp_footer push after form POST add-to-cart redirect.
+		if ( ! empty( $settings['event_update_cart'] ) ) {
+			add_action( 'wp_footer', [ __CLASS__, 'flush_update_cart' ], 5 );
 		}
 		if ( ! empty( $settings['event_view_cart'] ) ) {
 			add_action( 'wp_footer', [ __CLASS__, 'event_view_cart' ] );
@@ -219,6 +223,18 @@ class WADL_Events {
 		}
 	}
 
+	/**
+	 * Push update_cart after a form POST add-to-cart redirect.
+	 * The session flag is set by event_add_to_cart() during the form POST request.
+	 * Hooked on wp_footer so cart totals are finalized before building the payload.
+	 */
+	public static function flush_update_cart(): void {
+		if ( ! WC()->session ) return;
+		if ( ! WC()->session->get( 'wadl_pending_update_cart' ) ) return;
+		WC()->session->set( 'wadl_pending_update_cart', false );
+		self::push( [ 'event' => 'update_cart', 'cart' => self::get_cart_payload() ] );
+	}
+
 	public static function map_product( \WC_Product $product, int $qty = 1, int $index = 0 ): array {
 		$terms = get_the_terms( $product->get_id(), 'product_cat' );
 		$cats  = is_array( $terms ) ? wp_list_pluck( $terms, 'name' ) : [];
@@ -314,18 +330,29 @@ class WADL_Events {
 	}
 
 	public static function event_add_to_cart( string $cart_item_key, int $product_id, int $quantity, int $variation_id ): void {
-		// Form POST handled by JS form.cart interceptor at click time — skip here.
-		if ( ! ( ( defined( 'WC_DOING_AJAX' ) && WC_DOING_AJAX ) || ( defined( 'DOING_AJAX' ) && DOING_AJAX ) ) ) return;
+		$is_ajax  = ( defined( 'WC_DOING_AJAX' ) && WC_DOING_AJAX ) || ( defined( 'DOING_AJAX' ) && DOING_AJAX );
+		$settings = WADL_Core::get_settings();
 
-		$product = wc_get_product( $variation_id ?: $product_id );
-		if ( ! $product ) return;
-
-		// Store for inject_cart_events_fragment() — no WC session, per-request only.
-		self::$ajax_atc_ecommerce = [
-			'currency' => sanitize_text_field( get_woocommerce_currency() ),
-			'value'    => round( (float) $product->get_price() * $quantity, 2 ),
-			'items'    => [ self::map_product( $product, $quantity ) ],
-		];
+		if ( $is_ajax ) {
+			// AJAX path: store ecommerce data for inject_cart_events_fragment().
+			if ( ! empty( $settings['event_add_to_cart'] ) ) {
+				$product = wc_get_product( $variation_id ?: $product_id );
+				if ( $product ) {
+					self::$ajax_atc_ecommerce = [
+						'currency' => sanitize_text_field( get_woocommerce_currency() ),
+						'value'    => round( (float) $product->get_price() * $quantity, 2 ),
+						'items'    => [ self::map_product( $product, $quantity ) ],
+					];
+				}
+			}
+			// update_cart for AJAX is handled in inject_cart_events_fragment().
+		} else {
+			// Form POST path: JS handles add_to_cart at click time.
+			// Queue update_cart so flush_update_cart() can push it on the next page load.
+			if ( ! empty( $settings['event_update_cart'] ) && WC()->session ) {
+				WC()->session->set( 'wadl_pending_update_cart', true );
+			}
+		}
 	}
 
 	public static function event_remove_from_cart( string $cart_item_key, \WC_Cart $cart ): void {
