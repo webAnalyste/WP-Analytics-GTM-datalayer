@@ -194,8 +194,17 @@ class WADL_Events {
 	public static function flush_cart_events(): void {
 		if ( ! WC()->session ) return;
 		$pending = (array) WC()->session->get( 'wadl_pending_events', [] );
-		if ( empty( $pending ) ) return;
-		WC()->session->set( 'wadl_pending_events', [] );
+		WC()->session->set( 'wadl_pending_events', [] ); // always clear, regardless of content
+
+		if ( empty( $pending ) ) {
+			// Nothing to push — but always clean up any stranded sessionStorage flag.
+			// If the session was empty (race condition, session not started, or events
+			// already consumed elsewhere), the flag set by the JS form-submit interceptor
+			// would otherwise persist and silently block the next AJAX add_to_cart push.
+			// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+			echo '<script>sessionStorage.removeItem("wadlAtcHandled");</script>' . "\n";
+			return;
+		}
 
 		// Gate: if the JS form-submit interceptor already pushed this event (single product
 		// page CTA, form POST flow), skip to avoid a duplicate. The interceptor sets
