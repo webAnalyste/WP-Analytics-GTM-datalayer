@@ -67,34 +67,23 @@
   var events = cfg.events || {};
 
   // ------------------------------------------------------------------
-  // add_to_cart (AJAX) — pure JS using $button + wadlProducts
+  // add_to_cart (AJAX) — PHP static variable → fragments → JS push
   //
-  // For AJAX add-to-cart buttons (shop / category pages), WooCommerce fires
-  // the added_to_cart jQuery event with the clicked button as 4th argument.
-  // We look up the product in wadlProducts (injected server-side) and push
-  // the event immediately — no PHP session involvement.
+  // event_add_to_cart() (PHP) captures the product data during the AJAX request
+  // and injects it into fragments.wadl_add_to_cart. No WC session — per-request
+  // static variable only, so no cross-tab or background-refresh issues.
   //
-  // remove_from_cart — PHP session → fragments → JS push
-  // update_cart      — PHP fragments → JS push (cart state after any AJAX mutation)
+  // remove_from_cart — PHP WC session → fragments → JS push
+  // update_cart      — PHP cart payload → fragments → JS push
   // ------------------------------------------------------------------
   if ( ( events.add_to_cart || events.remove_from_cart || events.update_cart ) && typeof jQuery !== 'undefined' ) {
 
-    jQuery( document.body ).on( 'added_to_cart', function ( e, fragments, cart_hash, $button ) {
-      // add_to_cart: resolve product from clicked button
-      if ( events.add_to_cart && $button && window.wadlProducts ) {
-        var productId = String( $button.data( 'product_id' ) || $button.attr( 'data-product_id' ) || '' );
-        if ( productId ) {
-          var item = window.wadlProducts[ productId ];
-          if ( item ) {
-            pushEcommerce( 'add_to_cart', {
-              currency: cfg.currency || '',
-              value: parseFloat( item.price || 0 ),
-              items: [ Object.assign( {}, item, { quantity: 1 } ) ],
-            } );
-          }
-        }
+    jQuery( document.body ).on( 'added_to_cart', function ( e, fragments ) {
+      // add_to_cart: ecommerce data prepared server-side for this AJAX request
+      if ( events.add_to_cart && fragments && fragments.wadl_add_to_cart ) {
+        pushEcommerce( 'add_to_cart', fragments.wadl_add_to_cart );
       }
-      // update_cart: full cart state from fragments
+      // update_cart: full cart state after the add
       if ( events.update_cart && fragments && fragments.wadl_update_cart ) {
         push( { event: 'update_cart', cart: fragments.wadl_update_cart } );
       }
@@ -113,7 +102,7 @@
           window.dataLayer.push( data );
         } );
       }
-      // update_cart: full cart state from fragments
+      // update_cart: full cart state after the remove
       if ( events.update_cart && fragments && fragments.wadl_update_cart ) {
         push( { event: 'update_cart', cart: fragments.wadl_update_cart } );
       }

@@ -100,6 +100,11 @@ class WADL_Core {
 			foreach ( self::DEFAULTS_ON as $key ) {
 				$saved[ $key ] = 1;
 			}
+			// 1.3.22: supprimer event_cart_all_items (renommé en event_update_cart, désactivé).
+			unset( $saved['event_cart_all_items'] );
+			if ( ! isset( $saved['event_update_cart'] ) ) {
+				$saved['event_update_cart'] = 0;
+			}
 			update_option( WADL_OPTION_KEY, $saved );
 		}
 
