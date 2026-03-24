@@ -10,10 +10,15 @@ Current version: `WADL_VERSION` constant in `wp-analytics-datalayer/wp-analytics
 
 ## Release workflow
 
-To publish a new version:
-1. Bump `WADL_VERSION` in `wp-analytics-datalayer.php` (appears twice: plugin header + `define`)
-2. Rebuild the versioned ZIP: `zip -r wp-analytics-datalayer-X.Y.Z.zip wp-analytics-datalayer/`
-3. Commit + push to `main` — the updater fetches the raw PHP file from `raw.githubusercontent.com` to detect new versions, then downloads the versioned ZIP from the same branch
+> **RÈGLE D'OR — auto-update WordPress**
+> Le mécanisme de mise à jour WordPress lit la version directement sur `raw.githubusercontent.com/main/wp-analytics-datalayer.php` et télécharge `wp-analytics-datalayer-{VERSION}.zip` depuis le même branch.
+> **Les 4 étapes sont TOUTES obligatoires — dans cet ordre — sans exception :**
+> 1. Bumper `WADL_VERSION` dans `wp-analytics-datalayer.php` (2 occurrences : header plugin + `define`)
+> 2. Reconstruire le ZIP versionné : `zip -r wp-analytics-datalayer-X.Y.Z.zip wp-analytics-datalayer/`
+> 3. Commiter les fichiers modifiés **ET** le nouveau ZIP
+> 4. `git push origin main` — **sans ce push, WordPress ne verra jamais la nouvelle version**
+>
+> Si l'update n'apparaît pas immédiatement dans WP admin : aller dans **DataLayer → Dashboard → "Vérifier maintenant"** pour vider le transient cache (TTL 6h) et forcer un nouveau fetch GitHub.
 
 There is no build step, no composer, no npm.
 
